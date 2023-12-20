@@ -56,16 +56,16 @@ export default function RootLayout({
         <WagmiConfig config={wagmiConfig}>
           <RainbowKitProvider chains={chains}>
             <header className="flex flex-row mt-5 mb-10">
-              <div className="basis-11/12">
+              <div>
                 <Link href="/"><h1 className="text-4xl">Leasy 🤝</h1></Link>
               </div>
-              <div><ConnectButton /></div>
+              <div className="ml-auto"><ConnectButton /></div>
             </header>
 
             {children}
 
             <footer className="mb-5 fixed bottom-0 right-5">
-              Developed by <a target="_blank" href="https://github.com/vince-grondin">Roch</a>
+              Developed by <a className="underline" target="_blank" href="https://github.com/vince-grondin">Roch</a>
             </footer>
           </RainbowKitProvider>
         </WagmiConfig>

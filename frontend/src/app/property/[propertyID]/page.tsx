@@ -28,8 +28,8 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
         <h4>👤 Owned by {owner == connectedAddress ? 'you' : owner}</h4>
 
-        <span>📍 Located at
-            &nbsp;<a target="_blank" href={`https://www.google.com/maps/place/${address}`}>{address}</a>
+        <span>📍 Located at&nbsp;
+            <a className="underline" target="_blank" href={`https://www.google.com/maps/place/${address}`}>{address}</a>
         </span>
 
         <hr className="mt-5 mb-5" />
@@ -51,7 +51,7 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
         <h3 className="text-lg mt-5">Agreement</h3>
         {isPdf(leaseAgreementUrl) && <iframe title="lease" src={leaseAgreementUrl} width={800} height={800} />}
-        {!isPdf(leaseAgreementUrl) && <a target="_blank" href={leaseAgreementUrl}>Open 🔗</a>}
+        {!isPdf(leaseAgreementUrl) && <a className="underline" target="_blank" href={leaseAgreementUrl}>Open 🔗</a>}
     </div>
 }
 
