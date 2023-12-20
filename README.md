@@ -19,7 +19,7 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 npm run dev
 ```
 
-1. Open [http://localhost:3000](http://localhost:3000) with your browser.
+2. Open [http://localhost:3000](http://localhost:3000) with your browser.
 
 ### Contracts
 This codebase uses Foundry, a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.
@@ -30,7 +30,18 @@ Foundry consists of:
 - **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
 - **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
-#### Foundry Commands
+#### Running locally
+1. Start local Ethereum node
+```shell
+anvil
+```
+
+2. Deploy Leasy contract to local Ethereum node
+```shell
+forge create src/Leasy.sol:Leasy --private-key <private_key_from_anvil_output> --constructor-args <erc-721-token-name> <erc-721-token-symbol>
+```
+
+#### Foundry Popular Commands
 ##### Build
 ```shell
 $ forge build
