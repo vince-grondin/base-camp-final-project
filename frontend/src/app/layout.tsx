@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import { Inter } from 'next/font/google'
 import './globals.css'
@@ -9,21 +9,32 @@ import {
 } from '@rainbow-me/rainbowkit';
 import { configureChains, createConfig, WagmiConfig } from 'wagmi';
 import {
-  mainnet,
-  polygon,
-  optimism,
   arbitrum,
   base,
   baseGoerli,
+  localhost,
+  mainnet,
+  optimism,
+  polygon,
   zora,
 } from 'wagmi/chains';
 import { alchemyProvider } from 'wagmi/providers/alchemy';
 import { publicProvider } from 'wagmi/providers/public';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
+import { PropertiesContextProvider } from './_contexts/state';
 
 const { chains, publicClient } = configureChains(
-  [mainnet, polygon, optimism, arbitrum, base, baseGoerli, zora],
+  [
+    arbitrum,
+    base,
+    baseGoerli,
+    localhost,
+    mainnet,
+    optimism,
+    polygon,
+    zora
+  ],
   [
     alchemyProvider({ apiKey: process.env.NEXT_PUBLIC_ALCHEMY_ID! }),
     publicProvider()
@@ -55,18 +66,20 @@ export default function RootLayout({
       <body className={inter.className + " ms-5 me-5"}>
         <WagmiConfig config={wagmiConfig}>
           <RainbowKitProvider chains={chains}>
-            <header className="flex flex-row mt-5 mb-10">
-              <div>
-                <Link href="/"><h1 className="text-4xl">Leasy 🤝</h1></Link>
-              </div>
-              <div className="ml-auto"><ConnectButton /></div>
-            </header>
+            <PropertiesContextProvider>
+              <header className="flex flex-row mt-5 mb-10">
+                <div>
+                  <Link href="/"><h1 className="text-4xl">Leasy 🤝</h1></Link>
+                </div>
+                <div className="ml-auto"><ConnectButton /></div>
+              </header>
 
-            {children}
+              {children}
 
-            <footer className="mb-5 fixed bottom-0 right-5">
-              Developed by <a className="underline" target="_blank" href="https://github.com/vince-grondin">Roch</a>
-            </footer>
+              <footer className="mb-5 fixed bottom-0 right-5">
+                Developed by <a className="underline" target="_blank" href="https://github.com/vince-grondin">Roch</a>
+              </footer>
+            </PropertiesContextProvider>
           </RainbowKitProvider>
         </WagmiConfig>
       </body>

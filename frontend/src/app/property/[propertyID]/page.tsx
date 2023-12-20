@@ -1,6 +1,6 @@
 "use client";
 import { SignerStatus } from "@/app/Models";
-import { properties } from "@/app/_fixtures/Properties"
+import { usePropertiesContext } from "@/app/_contexts/state";
 import { useAccount } from "wagmi";
 
 export type PropertyDetailsParams = {
@@ -12,6 +12,7 @@ export type PropertyDetailsProps = {
 }
 
 export default function PropertyDetails({ params: { propertyID } }: PropertyDetailsProps) {
+    const properties = usePropertiesContext();
     const property = properties.find(it => it.id == propertyID);
     if (!property) throw new Error(`Property ${propertyID} not found!`);
 
