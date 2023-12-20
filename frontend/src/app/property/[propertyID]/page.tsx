@@ -65,7 +65,7 @@ function SignerRow({ address, status }: SignerRowProps) {
         switch (status) {
             case SignerStatus.APPROVED: return "✅";
             case SignerStatus.DECLINED: return "❌";
-            default: "↗️"
+            default: return "↗️"
         }
     }
 
