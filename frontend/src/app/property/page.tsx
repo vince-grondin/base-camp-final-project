@@ -88,7 +88,7 @@ export default function PropertyForm() {
                         className={
                             clsx({
                                 "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-40": isValid(),
-                                "bg-gray-200 text-black font-bold py-2 px-4 rounded w-40": !isValid() || isSaving
+                                "bg-gray-200 hover:bg-gray-200 text-black font-bold py-2 px-4 rounded w-40": !isValid() || isSaving
                             })
                         }>
                         {isSaving &&
