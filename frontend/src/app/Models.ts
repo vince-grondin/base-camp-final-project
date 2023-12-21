@@ -1,13 +1,19 @@
 export type Property = {
     id: number,
     name: string,
-    address: string,
+    fullAddress: string,
     owner: `0x${string}`,
     leaseAgreementUrl: string,
-    signers: `0x${string}`[],
-    signersStatuses: SignerStatus[]
+    status: PropertyStatus,
+    depositAmount: number,
+    renters: `0x${string}`[],
+    signatureStatuses: SignerStatus[]
+}
+
+export enum PropertyStatus {
+    AVAILABLE, PROCESSING, RENTING
 }
 
 export enum SignerStatus {
-    APPROVED, DECLINED
+    PENDING, APPROVED, DECLINED
 }
