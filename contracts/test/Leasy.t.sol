@@ -17,6 +17,7 @@ contract LeasyTest is Test {
     Leasy.Property private propertyFixture2;
 
     event PropertyAdded(uint propertyID);
+    event PropertyLeasingInitiated(uint propertyID);
 
     function setUp() public {
         leasy = new Leasy("TEST_NAME", "TEST_SYMBOL");
@@ -39,11 +40,7 @@ contract LeasyTest is Test {
         vm.expectEmit(true, true, true, true, address(leasy));
         emit PropertyAdded(1);
 
-        leasy.addProperty(
-            propertyFixture1.name,
-            propertyFixture1.fullAddress,
-            propertyFixture1.leaseAgreementUrl
-        );
+        _addProperty(propertyFixture1);
         vm.stopPrank();
 
         vm.startPrank(_retriever);
@@ -86,11 +83,7 @@ contract LeasyTest is Test {
         vm.startPrank(_owner1);
         vm.expectEmit(true, true, true, true, address(leasy));
         emit PropertyAdded(1);
-        leasy.addProperty(
-            propertyFixture1.name,
-            propertyFixture1.fullAddress,
-            propertyFixture1.leaseAgreementUrl
-        );
+        _addProperty(propertyFixture1);
         vm.stopPrank();
 
         vm.startPrank(_retriever);
@@ -104,11 +97,7 @@ contract LeasyTest is Test {
         vm.startPrank(_owner2);
         vm.expectEmit(true, true, true, true, address(leasy));
         emit PropertyAdded(2);
-        leasy.addProperty(
-            propertyFixture2.name,
-            propertyFixture2.fullAddress,
-            propertyFixture2.leaseAgreementUrl
-        );
+        _addProperty(propertyFixture2);
         vm.stopPrank();
 
         vm.startPrank(_retriever);
@@ -147,11 +136,7 @@ contract LeasyTest is Test {
         vm.assume(_retriever != address(0) && _retriever != _owner);
 
         vm.startPrank(_owner);
-        leasy.addProperty(
-            propertyFixture1.name,
-            propertyFixture1.fullAddress,
-            propertyFixture1.leaseAgreementUrl
-        );
+        _addProperty(propertyFixture1);
         vm.stopPrank();
 
         vm.startPrank(_retriever);
@@ -160,15 +145,143 @@ contract LeasyTest is Test {
         assertEq(result.length, 2);
         _assertEqProperty(result[0], defaultProperty);
 
-        Leasy.Property memory expectedProperty1;
-        expectedProperty1.id = 1;
-        expectedProperty1.name = propertyFixture1.name;
-        expectedProperty1.fullAddress = propertyFixture1.fullAddress;
-        expectedProperty1.leaseAgreementUrl = propertyFixture1
-            .leaseAgreementUrl;
+        Leasy.Property memory expectedProperty1 = propertyFixture1;
         expectedProperty1.owner = _owner;
 
         _assertEqProperty(result[1], expectedProperty1);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and that the property does not exist then it reverts with a
+     *      `PropertyDoesNotExist` error.
+     * @param _owner Owner of the property.
+     * @param _propertyID ID of the property.
+     * @param _renter1 Address of a renter.
+     * @param _renter2 Address of another renter.
+     * @param _renter3 Address of another renter.
+     * @param _depositAmount Amount of the deposit to pay before the property can be rented.
+     */
+    function test_GivenPropertiesExist_AndPropertyIDNotExist_WhenLeasingProperty_ThenPropertyDoesNotExistRevert(
+        address _owner,
+        uint _propertyID,
+        address _renter1,
+        address _renter2,
+        address _renter3,
+        uint _depositAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_propertyID != propertyFixture1.id && _propertyID > 1);
+        vm.assume(_depositAmount != 0);
+        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
+        address[] memory renters = _initializeRenters(
+            _renter1,
+            _renter2,
+            _renter3
+        );
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyDoesNotExist.selector,
+                _propertyID
+            )
+        );
+
+        leasy.leaseProperty(_propertyID, renters, _depositAmount);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and that the property is not owned by the sender then it reverts
+     *      with a `SenderNotOwner` error.
+     * @param _owner Owner of the property.
+     * @param _renter1 Address of a renter.
+     * @param _renter2 Address of another renter.
+     * @param _renter3 Address of another renter.
+     * @param _depositAmount Amount of the deposit to pay before the property can be rented.
+     */
+    function test_GivenPropertyExist_AndNotOwner_WhenLeasingProperty_ThenSenderNotOwnerRevert(
+        address _owner,
+        address _renter1,
+        address _renter2,
+        address _renter3,
+        uint _depositAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_depositAmount != 0);
+        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
+        address[] memory renters = _initializeRenters(
+            _renter1,
+            _renter2,
+            _renter3
+        );
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.startPrank(_renter1);
+        vm.expectRevert(
+            abi.encodeWithSelector(ILeasy.SenderNotOwner.selector, propertyID)
+        );
+        leasy.leaseProperty(propertyID, renters, _depositAmount);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and that the property is not owned by the sender then it reverts
+     *      with a `SenderNotOwner` error.
+     * @param _owner Owner of the property.
+     * @param _renter1 Address of a renter.
+     * @param _renter2 Address of another renter.
+     * @param _renter3 Address of another renter.
+     * @param _depositAmount Amount of the deposit to pay before the property can be rented.
+     */
+    function test_GivenPropertyExist_AndSenderIsOwner_WhenLeasingProperty_ThenSuccess(
+        address _owner,
+        address _renter1,
+        address _renter2,
+        address _renter3,
+        uint _depositAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_depositAmount != 0);
+        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
+        address[] memory renters = _initializeRenters(
+            _renter1,
+            _renter2,
+            _renter3
+        );
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+
+        vm.expectEmit(true, true, true, true, address(leasy));
+        emit PropertyLeasingInitiated(propertyID);
+
+        bool result = leasy.leaseProperty(propertyID, renters, _depositAmount);
+
+        assertTrue(result);
+
+        Leasy.Property memory property = leasy.getProperties()[1];
+        assertEq(property.depositAmount, _depositAmount);
+        assertEq(property.renters, renters);
+        assertEq(property.renters.length, property.signatureStatuses.length);
+    }
+
+    /**
+     * @dev Helper function that delegates to `leasy#addProperty`.
+     * @param _property The property to add.
+     */
+    function _addProperty(Leasy.Property memory _property) private {
+        leasy.addProperty(
+            _property.name,
+            _property.fullAddress,
+            _property.leaseAgreementUrl
+        );
     }
 
     /**
@@ -186,6 +299,24 @@ contract LeasyTest is Test {
         );
     }
 
+    function _assumeDistinctRenters(
+        address _owner,
+        address _renter1,
+        address _renter2,
+        address _renter3
+    ) private pure {
+        vm.assume(_renter1 != _owner && _renter1 != address(0));
+        vm.assume(
+            _renter2 != _owner && _renter2 != address(0) && _renter2 != _renter1
+        );
+        vm.assume(
+            _renter3 != _owner &&
+                _renter3 != address(0) &&
+                _renter3 != _renter2 &&
+                _renter3 != _renter1
+        );
+    }
+
     /**
      * @dev Initializes the test fixtures.
      */
@@ -194,12 +325,31 @@ contract LeasyTest is Test {
         propertyFixture1.name = "Tiny House";
         propertyFixture1.fullAddress = "123 Fake Street";
         propertyFixture1.leaseAgreementUrl = "https://bitcoin.org/bitcoin.pdf";
+        propertyFixture1.status = ILeasy.PropertyStatus.AVAILABLE;
         propertyFixture1.owner = address(1);
 
         propertyFixture2.id = 2;
         propertyFixture2.name = "Small House";
         propertyFixture2.fullAddress = "456 Fake Street";
         propertyFixture2.leaseAgreementUrl = "https://etherscan.io";
+        propertyFixture2.status = ILeasy.PropertyStatus.AVAILABLE;
         propertyFixture1.owner = address(2);
+    }
+
+    /**
+     * @dev Initializes an array of renters.
+     * @param _renter1 The address of a renter.
+     * @param _renter2 The address of another renter.
+     * @param _renter3 The address of another renter.
+     */
+    function _initializeRenters(
+        address _renter1,
+        address _renter2,
+        address _renter3
+    ) private pure returns (address[] memory renters) {
+        renters = new address[](3);
+        renters[0] = _renter1;
+        renters[1] = _renter2;
+        renters[2] = _renter3;
     }
 }
