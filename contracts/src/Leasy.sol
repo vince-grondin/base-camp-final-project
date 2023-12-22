@@ -141,11 +141,11 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /**
-     * @dev Checks that the property identified by `_propertyID` is in the `properties` array.
+     * Checks that the sender owns the property identified by `_propertyID.
      */
-    modifier propertyExists(uint _propertyID) {
-        if (_propertyID >= properties.length || properties[_propertyID].id == 0)
-            revert PropertyDoesNotExist(_propertyID);
+    modifier isOwner(uint _propertyID) {
+        if (_msgSender() != _ownerOf(_propertyID))
+            revert SenderNotOwner(_propertyID);
         _;
     }
 
@@ -159,11 +159,11 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /**
-     * Checks that the sender owns the property identified by `_propertyID.
+     * @dev Checks that the property identified by `_propertyID` is in the `properties` array.
      */
-    modifier isOwner(uint _propertyID) {
-        if (_msgSender() != _ownerOf(_propertyID))
-            revert SenderNotOwner(_propertyID);
+    modifier propertyExists(uint _propertyID) {
+        if (_propertyID >= properties.length || properties[_propertyID].id == 0)
+            revert PropertyDoesNotExist(_propertyID);
         _;
     }
 }
