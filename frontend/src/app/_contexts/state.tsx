@@ -15,9 +15,7 @@ export function PropertiesContextProvider({ children }: PropertiesContextProvide
         abi: contractData.abi,
         functionName: 'getProperties',
         onSuccess(data) {
-            const processedData = (data as Property[]);
-            processedData.shift(); // Removes zero-value at index 0
-            setProperties(processedData);
+            setProperties(data as Property[]);
         },
     });
 

@@ -27,7 +27,7 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
     return <div>
         <div className="mb-5">
-            <span className="text-3xl mb-10 me-5">🏠 {name}</span>
+            <span className="text-4xl inline-block me-5">🏠 {name}</span>
             <PropertyStatusBadge status={status} />
         </div>
         <h4>👤 Owned by {owner == connectedAddress ? 'you' : owner}</h4>

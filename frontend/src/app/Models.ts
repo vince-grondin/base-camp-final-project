@@ -10,10 +10,6 @@ export type Property = {
     signatureStatuses: SignerStatus[]
 }
 
-export enum PropertyStatus {
-    AVAILABLE, PROCESSING, RENTING
-}
+export enum PropertyStatus { AVAILABLE, PROCESSING, RENTING }
 
-export enum SignerStatus {
-    PENDING, APPROVED, DECLINED
-}
+export enum SignerStatus { DEFAULT, PENDING, APPROVED, DECLINED }
