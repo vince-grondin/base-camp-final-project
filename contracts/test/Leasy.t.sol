@@ -18,6 +18,11 @@ contract LeasyTest is Test {
 
     event PropertyAdded(uint propertyID);
     event PropertyLeasingInitiated(uint propertyID);
+    event PropertyLeaseSignatureSaved(
+        uint propertyID,
+        address userID,
+        ILeasy.SignatureStatus signatureStatus
+    );
 
     function setUp() public {
         leasy = new Leasy("TEST_NAME", "TEST_SYMBOL");
@@ -46,13 +51,11 @@ contract LeasyTest is Test {
         vm.startPrank(_retriever);
         Leasy.Property[] memory result = leasy.getProperties();
 
-        assertEq(result.length, 2);
-        _assertEqProperty(result[0], defaultProperty);
+        assertEq(result.length, 1);
 
         Leasy.Property memory expectedProperty1 = propertyFixture1;
         expectedProperty1.owner = _owner;
-
-        _assertEqProperty(result[1], expectedProperty1);
+        _assertEqProperty(result[0], expectedProperty1);
     }
 
     /**
@@ -90,9 +93,8 @@ contract LeasyTest is Test {
         Leasy.Property[] memory result1 = leasy.getProperties();
         vm.stopPrank();
 
-        assertEq(result1.length, 2);
-        _assertEqProperty(result1[0], defaultProperty);
-        _assertEqProperty(result1[1], expectedProperty1);
+        assertEq(result1.length, 1);
+        _assertEqProperty(result1[0], expectedProperty1);
 
         vm.startPrank(_owner2);
         vm.expectEmit(true, true, true, true, address(leasy));
@@ -103,28 +105,24 @@ contract LeasyTest is Test {
         vm.startPrank(_retriever);
         Leasy.Property[] memory result2 = leasy.getProperties();
 
-        assertEq(result2.length, 3);
-        _assertEqProperty(result2[0], defaultProperty);
-        _assertEqProperty(result2[1], expectedProperty1);
-        _assertEqProperty(result2[2], expectedProperty2);
+        assertEq(result2.length, 2);
+        _assertEqProperty(result2[0], expectedProperty1);
+        _assertEqProperty(result2[1], expectedProperty2);
     }
 
     /**
-     * @dev Verifies that calling `getProperties` before adding any properties returns an array with a single element
-     *      with zero values.
+     * @dev Verifies that calling `getProperties` before adding any properties returns an empty array.
      */
-    function test_GivenNoPropertiesAdded_WhenGettingProperties_ThenArrayWithOneItemWithZeroValuesReturned()
+    function test_GivenNoPropertiesAdded_WhenGettingProperties_ThenEmptyArrayReturned()
         public
     {
         Leasy.Property[] memory result = leasy.getProperties();
 
-        assertEq(result.length, 1);
-        _assertEqProperty(result[0], defaultProperty);
+        assertEq(result.length, 0);
     }
 
     /**
-     * @dev Verifies that calling `getProperties` after adding a property return an array with two elements: the
-     *      zero values element at index 0 and the property added by `_owner` at index 1.
+     * @dev Verifies that calling `getProperties` after adding a property return an array with the property.
      * @param _owner The address of the user who added a property.
      * @param _retriever The address of the user getting the properties.
      */
@@ -142,13 +140,11 @@ contract LeasyTest is Test {
         vm.startPrank(_retriever);
         Leasy.Property[] memory result = leasy.getProperties();
 
-        assertEq(result.length, 2);
-        _assertEqProperty(result[0], defaultProperty);
+        assertEq(result.length, 1);
 
         Leasy.Property memory expectedProperty1 = propertyFixture1;
         expectedProperty1.owner = _owner;
-
-        _assertEqProperty(result[1], expectedProperty1);
+        _assertEqProperty(result[0], expectedProperty1);
     }
 
     /**
@@ -231,8 +227,7 @@ contract LeasyTest is Test {
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and that the property is not owned by the sender then it reverts
-     *      with a `SenderNotOwner` error.
+     * @dev Verifies that when calling `leaseProperty` and that the property owned by the sender it succeeds.
      * @param _owner Owner of the property.
      * @param _renter1 Address of a renter.
      * @param _renter2 Address of another renter.
@@ -266,10 +261,157 @@ contract LeasyTest is Test {
 
         assertTrue(result);
 
-        Leasy.Property memory property = leasy.getProperties()[1];
+        Leasy.Property memory property = leasy.getProperties()[0];
         assertEq(property.depositAmount, _depositAmount);
         assertEq(property.renters, renters);
         assertEq(property.renters.length, property.signatureStatuses.length);
+    }
+
+    /**
+     * @dev Verifies that when calling `signLease` and that the property does not exist then it reverts with a
+     *      `PropertyDoesNotExist` error.
+     * @param _owner Owner of the property.
+     * @param _propertyID ID of the property.
+     */
+    function test_GivenPropertiesExist_AndPropertyIDNotExist_WhenSigningLease_ThenPropertyDoesNotExistRevert(
+        address _owner,
+        uint _propertyID
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_propertyID != propertyFixture1.id && _propertyID > 1);
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyDoesNotExist.selector,
+                _propertyID
+            )
+        );
+
+        leasy.signLease(_propertyID, ILeasy.SignatureStatus.APPROVED);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and the leasing process wasn't initiated for the property then
+     *      it reverts with `PropertyNotProcessing` error.
+     * @param _owner Owner of the property.
+     * @param _notRenter Address different than any of the renters addresses.
+     */
+    function test_GivenPropertyExist_AndLeasingNotInitiated_WhenSigningLease_ThenSenderNotRenterRevert(
+        address _owner,
+        address _notRenter
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_notRenter != address(0));
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.startPrank(_notRenter);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyNotProcessing.selector,
+                propertyID
+            )
+        );
+
+        leasy.signLease(propertyID, ILeasy.SignatureStatus.APPROVED);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and the leasing process was initiated for the property and
+     *      the sender is not a designated renter then it reverts with a `SenderNotRenter` error.
+     * @param _owner Owner of the property.
+     * @param _renter1 Address of a renter.
+     * @param _renter2 Address of another renter.
+     * @param _renter3 Address of another renter.
+     * @param _notRenter Address different than any of the renters addresses.
+     */
+    function test_GivenPropertyExist_AndLeasingInitiated_AndSenderNotADesignatedRenter_WhenSigningLease_ThenSenderNotRenterRevert(
+        address _owner,
+        address _renter1,
+        address _renter2,
+        address _renter3,
+        address _notRenter
+    ) public {
+        vm.assume(_owner != address(0));
+        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
+        vm.assume(
+            _notRenter != address(0) &&
+                _notRenter != _renter1 &&
+                _notRenter != _renter2 &&
+                _notRenter != _renter3
+        );
+        address[] memory renters = _initializeRenters(
+            _renter1,
+            _renter2,
+            _renter3
+        );
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        leasy.leaseProperty(propertyID, renters, 1000);
+        vm.stopPrank();
+
+        vm.startPrank(_notRenter);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILeasy.SenderNotRenter.selector, propertyID)
+        );
+
+        leasy.signLease(propertyID, ILeasy.SignatureStatus.APPROVED);
+    }
+
+    /**
+     * @dev Verifies that when calling `leaseProperty` and the leasing process was initiated for the property and
+     *      the sender is one of the designated renters then the signature status decision is successfully persisted.
+     * @param _owner Owner of the property.
+     * @param _renter1 Address of a renter.
+     * @param _renter2 Address of another renter.
+     * @param _renter3 Address of another renter.
+     */
+    function test_GivenPropertyExist_AndLeasingInitiated_AndSenderADesignatedRenter_WhenSigningLease_ThenSuccess(
+        address _owner,
+        address _renter1,
+        address _renter2,
+        address _renter3
+    ) public {
+        vm.assume(_owner != address(0));
+        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
+        address[] memory renters = _initializeRenters(
+            _renter1,
+            _renter2,
+            _renter3
+        );
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        leasy.leaseProperty(propertyID, renters, 1000);
+        vm.stopPrank();
+
+        vm.startPrank(_renter2);
+
+        vm.expectEmit(true, true, true, true, address(leasy));
+        emit PropertyLeaseSignatureSaved(
+            propertyID,
+            _renter2,
+            ILeasy.SignatureStatus.APPROVED
+        );
+
+        bool result = leasy.signLease(
+            propertyID,
+            ILeasy.SignatureStatus.APPROVED
+        );
+
+        assertTrue(result);
     }
 
     /**
