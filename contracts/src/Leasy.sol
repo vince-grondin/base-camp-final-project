@@ -10,32 +10,20 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 interface ILeasy is IERC721 {
     enum PropertyStatus {
         INACTIVE, // Default, keep first
-        AVAILABLE,
-        ASSIGNED,
-        RENTING
+        AVAILABLE
     }
 
-    enum SignatureStatus {
-        DEFAULT, // Default, keep first
-        PENDING,
-        APPROVED,
-        DECLINED
-    }
-
+    error DuplicateApplicant(uint propertyID, address applicant);
     error PropertyDoesNotExist(uint propertyID);
     error PropertyNotAssigned(uint propertyID);
     error PropertyNotAvailable(uint propertyID);
     error PropertyNotInactive(uint propertyID);
+    error SenderIsOwner(uint propertyID);
     error SenderNotOwner(uint propertyID);
     error SenderNotRenter(uint propertyID);
 
     event PropertyAdded(uint propertyID);
     event PropertyActivated(uint propertyID);
-    event PropertyLeaseSignatureSaved(
-        uint propertyID,
-        address userID,
-        SignatureStatus signatureStatus
-    );
 
     struct Property {
         uint id;
@@ -45,8 +33,10 @@ interface ILeasy is IERC721 {
         string picturesUrls;
         PropertyStatus status;
         uint depositAmount;
+        address[] applicants;
+        string[] applicantsDates;
         address[] renters;
-        SignatureStatus[] signatureStatuses;
+        string[] rentersDates;
     }
 
     /**
@@ -62,12 +52,6 @@ interface ILeasy is IERC721 {
     ) external returns (uint propertyID);
 
     /**
-     * @notice Gets all properties.
-     * @return All properties.
-     */
-    function getProperties() external returns (Property[] memory);
-
-    /**
      * @notice Activates the property identified by the supplied `_propertyID` by making it available and
      *          defining a deposit amount.
      * @param _propertyID The ID of the property.
@@ -79,23 +63,33 @@ interface ILeasy is IERC721 {
     ) external returns (bool);
 
     /**
-     * @notice Assigns renters to the property identified by the supplied `_propertyID`.
+     * @notice Inquires for a stay at the property identified by the supplied `_propertyID`.
      * @param _propertyID The ID of the property.
-     * @param _renters The renters of the property.
+     * @param _dates Comma-separated list of dates the sender is interested in staying at the property.
      */
-    function assignRenters(
+    function inquireStay(
         uint _propertyID,
-        address[] memory _renters
+        string memory _dates
     ) external returns (bool);
 
     /**
-     * @notice Submits a decision for the sender for a property for which the leasing process was initiated.
+     * @notice Assigns an applicant as a renter of the property identified by the supplied `_propertyID` for the
+     *         specified dates.
      * @param _propertyID The ID of the property.
+     * @param _applicant The applicant to designate as a renter.
+     * @param _dates The dates the applicant being designated as a renter will rent the property.
      */
-    function signLease(
+    function selectApplicant(
         uint _propertyID,
-        SignatureStatus signatureStatus
+        address _applicant,
+        string memory _dates
     ) external returns (bool);
+
+    /**
+     * @notice Gets all properties.
+     * @return All properties.
+     */
+    function getProperties() external returns (Property[] memory);
 }
 
 /**
@@ -103,8 +97,6 @@ interface ILeasy is IERC721 {
  * @author Roch
  */
 contract Leasy is ILeasy, ERC721 {
-    using PropertyInitializers for Leasy.InternalProperty;
-
     struct InternalProperty {
         uint id;
         string name;
@@ -118,13 +110,14 @@ contract Leasy is ILeasy, ERC721 {
     InternalProperty[] internal properties;
 
     mapping(uint propertyID => address[] renters) internal renters;
-    mapping(uint propertyID => mapping(address renter => uint renterIndex))
-        internal renterIndexes;
-    mapping(uint propertyID => mapping(address renter => bool isActive))
-        internal activeRenters;
+    mapping(uint propertyID => string[] dates) internal rentersDates;
 
-    mapping(uint propertyID => SignatureStatus[] signatureStatus)
-        internal signatureStatuses;
+    mapping(uint propertyID => address[] applicants) internal applicants;
+    mapping(uint propertyID => mapping(address applicant => uint applicantIndex))
+        internal applicantsIndexes;
+    mapping(uint propertyID => uint count) internal applicantsCount;
+
+    mapping(uint propertyID => string[] dates) internal applicantsDates;
 
     constructor(
         string memory _name,
@@ -153,31 +146,6 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /// @inheritdoc ILeasy
-    function getProperties()
-        external
-        view
-        override
-        returns (Property[] memory externalProperties)
-    {
-        externalProperties = new Property[](properties.length - 1);
-
-        for (uint i = 0; i < externalProperties.length; i++) {
-            InternalProperty storage property = properties[i + 1];
-            externalProperties[i] = Property({
-                id: property.id,
-                name: property.name,
-                fullAddress: property.fullAddress,
-                owner: property.owner,
-                picturesUrls: property.picturesUrls,
-                status: property.status,
-                depositAmount: property.depositAmount,
-                renters: renters[property.id],
-                signatureStatuses: signatureStatuses[property.id]
-            });
-        }
-    }
-
-    /// @inheritdoc ILeasy
     function activateProperty(
         uint _propertyID,
         uint _depositAmount
@@ -199,9 +167,34 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /// @inheritdoc ILeasy
-    function assignRenters(
+    function inquireStay(
         uint _propertyID,
-        address[] memory _renters
+        string memory _dates
+    )
+        external
+        override
+        propertyExists(_propertyID)
+        propertyAvailable(_propertyID)
+        returns (bool)
+    {
+        // TODO Require deposit with amount equal to property's required deposit, and store deposit in contract's balance
+        // TODO Check dates not already booked (not already in rentersDates)
+        applicantsIndexes[_propertyID][_msgSender()] = applicants[_propertyID]
+            .length;
+        applicants[_propertyID].push(_msgSender());
+        applicantsDates[_propertyID].push(_dates);
+        applicantsCount[_propertyID]++;
+        return true;
+    }
+
+    /**
+     * @inheritdoc ILeasy
+     * @dev Transfers the `_applicant` address from `applicants` to `renters`.
+     */
+    function selectApplicant(
+        uint _propertyID,
+        address _applicant,
+        string memory _dates
     )
         external
         override
@@ -210,41 +203,77 @@ contract Leasy is ILeasy, ERC721 {
         isOwner(_propertyID)
         returns (bool)
     {
-        InternalProperty storage property = properties[_propertyID];
-        property._initializeRenters(
-            _renters,
-            renters,
-            renterIndexes,
-            activeRenters
-        );
-        property._initializeSignatureStatuses(
-            _renters.length,
-            signatureStatuses
-        );
-        property.status = PropertyStatus.ASSIGNED;
+        renters[_propertyID].push(_applicant);
+        rentersDates[_propertyID].push(_dates);
+
+        uint applicantIndex = applicantsIndexes[_propertyID][_applicant];
+        delete applicants[_propertyID][applicantIndex];
+        delete applicantsDates[_propertyID][applicantIndex];
+        applicantsCount[_propertyID]--;
+
+        // TODO Return deposit of applicants that selected any dates the same as any of this selected applicant's dates
+
         return true;
     }
 
     /// @inheritdoc ILeasy
-    function signLease(
-        uint _propertyID,
-        SignatureStatus signatureStatus
-    )
+    function getProperties()
         external
+        view
         override
-        propertyExists(_propertyID)
-        propertyAssigned(_propertyID)
-        isRenter(_propertyID)
-        returns (bool)
+        returns (Property[] memory externalProperties)
     {
-        uint renterIndex = renterIndexes[_propertyID][_msgSender()];
-        signatureStatuses[_propertyID][renterIndex] = signatureStatus;
-        emit PropertyLeaseSignatureSaved(
-            _propertyID,
-            _msgSender(),
-            signatureStatus
-        );
-        return true;
+        externalProperties = new Property[](properties.length - 1);
+
+        for (uint i = 0; i < externalProperties.length; i++) {
+            InternalProperty storage property = properties[i + 1];
+            uint propertyID = property.id;
+
+            address[] memory activeApplicants = new address[](
+                applicantsCount[propertyID]
+            );
+            string[] memory activeApplicantsDates = new string[](
+                applicantsCount[propertyID]
+            );
+            uint activeApplicantsCursor = 0;
+            for (uint j = 0; j < applicants[propertyID].length; j++) {
+                address applicant = applicants[propertyID][j];
+
+                if (applicant != address(0)) {
+                    activeApplicants[activeApplicantsCursor] = applicant;
+
+                    activeApplicantsDates[
+                        activeApplicantsCursor
+                    ] = applicantsDates[propertyID][j];
+
+                    activeApplicantsCursor++;
+                }
+            }
+
+            externalProperties[i] = Property({
+                id: propertyID,
+                name: property.name,
+                fullAddress: property.fullAddress,
+                owner: property.owner,
+                picturesUrls: property.picturesUrls,
+                status: property.status,
+                depositAmount: property.depositAmount,
+                applicants: activeApplicants,
+                applicantsDates: activeApplicantsDates,
+                renters: renters[propertyID],
+                rentersDates: rentersDates[propertyID]
+            });
+        }
+    }
+
+    /**
+     * @dev Checks that the sender is not the owner of the property identified by `_propertyID`.
+     * @param _propertyID The ID of the property.
+     */
+    modifier isNotOwner(uint _propertyID) {
+        if (_msgSender() == _ownerOf(_propertyID))
+            revert SenderIsOwner(_propertyID);
+        _;
     }
 
     /**
@@ -254,16 +283,6 @@ contract Leasy is ILeasy, ERC721 {
     modifier isOwner(uint _propertyID) {
         if (_msgSender() != _ownerOf(_propertyID))
             revert SenderNotOwner(_propertyID);
-        _;
-    }
-
-    /**
-     * @dev Checks that the sender is one of the designated renters of the property identified by `_propertyID`.
-     * @param _propertyID The ID of the property.
-     */
-    modifier isRenter(uint _propertyID) {
-        if (!activeRenters[_propertyID][_msgSender()])
-            revert SenderNotRenter(_propertyID);
         _;
     }
 
@@ -295,65 +314,5 @@ contract Leasy is ILeasy, ERC721 {
         if (properties[_propertyID].status != PropertyStatus.INACTIVE)
             revert PropertyNotInactive(_propertyID);
         _;
-    }
-
-    /**
-     * @dev Checks that the property identified by `_propertyID` has the `PropertyStatus.ASSIGNED` `status`.
-     * @param _propertyID The ID of the property.
-     */
-    modifier propertyAssigned(uint _propertyID) {
-        if (properties[_propertyID].status != PropertyStatus.ASSIGNED)
-            revert PropertyNotAssigned(_propertyID);
-        _;
-    }
-}
-
-/**
- * @title Managers initialization of variables related to `Property`.
- * @author Roch
- */
-library PropertyInitializers {
-    /**
-     * @dev Initializes the renters of a `Property` and the renter index by property by renter mapping.
-     * @param _property The property for which to initialize the renters.
-     * @param _newRenters The addresses of the potential renters.
-     * @param _renters The mapping of renters by property ID.
-     * @param _renterIndexes The mapping of renter index by renter by property ID.
-     * @param _activeRenters The mapping of whether a renter is active by renter by property ID.
-     */
-    function _initializeRenters(
-        Leasy.InternalProperty storage _property,
-        address[] memory _newRenters,
-        mapping(uint propertyID => address[] renters) storage _renters,
-        mapping(uint propertyID => mapping(address renter => uint renterIndex))
-            storage _renterIndexes,
-        mapping(uint propertyID => mapping(address renter => bool isActive))
-            storage _activeRenters
-    ) internal {
-        _renters[_property.id] = _newRenters;
-
-        for (uint i = 0; i < _newRenters.length; i++) {
-            _renterIndexes[_property.id][_newRenters[i]] = i;
-            _activeRenters[_property.id][_newRenters[i]] = true;
-        }
-    }
-
-    /**
-     * @dev Initializes the signature statuses of the `_property` property.
-     * @param _property The property for which to initialize the signature statuses.
-     * @param _count The number of signature statuses to initialize.
-     * @param signatureStatuses The mapping of signature status by property ID by renter.
-     */
-    function _initializeSignatureStatuses(
-        Leasy.InternalProperty storage _property,
-        uint _count,
-        mapping(uint propertyID => ILeasy.SignatureStatus[] signatureStatus)
-            storage signatureStatuses
-    ) internal {
-        for (uint i = 0; i < _count; i++) {
-            signatureStatuses[_property.id].push(
-                ILeasy.SignatureStatus.PENDING
-            );
-        }
     }
 }

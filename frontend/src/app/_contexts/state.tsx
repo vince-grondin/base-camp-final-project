@@ -9,6 +9,7 @@ type PropertiesContextProviderProps = { children: React.ReactNode };
 
 export function PropertiesContextProvider({ children }: PropertiesContextProviderProps) {
     const [properties, setProperties] = useState<Property[]>([]);
+    console.log(properties);
 
     const { data, isError, isLoading } = useContractRead({
         address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
