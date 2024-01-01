@@ -6,10 +6,10 @@ export type Property = {
     picturesUrls: string,
     status: PropertyStatus,
     depositAmount: number,
+    applicants: `0x${string}`[],
+    applicantsDates: string[],
     renters: `0x${string}`[],
-    signatureStatuses: SignerStatus[]
+    rentersDates: string[],
 }
 
-export enum PropertyStatus { INACTIVE, AVAILABLE, ASSIGNED, RENTING }
-
-export enum SignerStatus { DEFAULT, PENDING, APPROVED, DECLINED }
+export enum PropertyStatus { INACTIVE, AVAILABLE }

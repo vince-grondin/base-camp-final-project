@@ -1,5 +1,5 @@
 "use client";
-import { SignerStatus } from "@/app/Models";
+import { PropertyStatus, SignerStatus } from "@/app/Models";
 import { PropertyStatusBadge } from "@/app/_components/PropertyStatusBadge";
 import { usePropertiesContext } from "@/app/_contexts/state";
 import { useAccount } from "wagmi";
@@ -19,7 +19,22 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
     const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
 
-    const { name, owner, fullAddress, picturesUrls, renters, signatureStatuses, status, depositAmount } = property;
+    const {
+        name,
+        owner,
+        fullAddress,
+        picturesUrls,
+        applicants,
+        applicantsDates,
+        renters,
+        rentersDates,
+        status,
+        depositAmount
+    } = property;
+
+    function shouldShowApplicants() {
+        return applicants.length > 0 && renters.length === 0;
+    }
 
     return <div>
         <div className="mb-5">
@@ -35,10 +50,48 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
             <a className="underline" target="_blank" href={`https://www.google.com/maps/place/${fullAddress}`}>{fullAddress}</a>
         </div>
 
-        <div>💰 Deposit: {depositAmount.toString()}</div>
+        {status !== PropertyStatus.INACTIVE &&
+            <>
+                <div>💰 Deposit: {depositAmount.toString()}</div>
 
-        <hr className="mt-5 mb-5" />
+                {connectedAddress === owner && <ApplicantsSection {...{ applicants, applicantsDates }} />}
 
+                {connectedAddress === owner && <RentersSection {...{ renters, rentersDates }} />}
+            </>
+        }
+    </div>
+}
+
+type ApplicantsSectionProps = {
+    applicants: `0x${string}`[],
+    applicantsDates: string[]
+}
+
+function ApplicantsSection({ applicants, applicantsDates }: ApplicantsSectionProps) {
+    return <div className="mt-5 mb-5">
+        <h3 className="text-lg">👋 Applicants</h3>
+        {(!applicants || applicants.length === 0) &&
+            <div>
+                <span className="italic">No new applicants for this property.</span>
+            </div>
+        }
+        {applicants && applicants.length > 0 &&
+            <ul>
+                {applicants.map((address, index) =>
+                    <li>{address} - {applicantsDates[index].replaceAll(',', ', ')}</li>
+                )}
+            </ul>
+        }
+    </div>
+}
+
+type RentersSectionProps = {
+    renters: `0x${string}`[],
+    rentersDates: string[]
+}
+
+function RentersSection({ renters, rentersDates }: RentersSectionProps) {
+    return <>
         <h3 className="text-lg">👤 Renters</h3>
         {(!renters || renters.length === 0) &&
             <div>
@@ -48,27 +101,9 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
         {renters && renters.length > 0 &&
             <ul>
                 {renters.map((address, index) =>
-                    <RenterRow {...{ address, status: signatureStatuses[index] ?? null }} />)
-                }
+                    <li>{address} - {rentersDates[index].replaceAll(',', ', ')}</li>
+                )}
             </ul>
         }
-
-    </div>
-}
-
-type RenterRowProps = {
-    address: `0x${string}`,
-    status: SignerStatus | null
-}
-
-function RenterRow({ address, status }: RenterRowProps) {
-    function statusIcon() {
-        switch (status) {
-            case SignerStatus.APPROVED: return <span>✅</span>;
-            case SignerStatus.DECLINED: return <span>❌</span>;
-            case SignerStatus.PENDING: return <span>↗️</span>
-        }
-    }
-
-    return <li>{statusIcon()} {address}</li>
+    </>
 }
