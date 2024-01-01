@@ -14,6 +14,7 @@ interface ILeasy is IERC721 {
     }
 
     error DuplicateApplicant(uint propertyID, address applicant);
+    error InsufficientDeposit(uint propertyID, uint submittedAmount);
     error PropertyDoesNotExist(uint propertyID);
     error PropertyNotAssigned(uint propertyID);
     error PropertyNotAvailable(uint propertyID);
@@ -70,7 +71,7 @@ interface ILeasy is IERC721 {
     function inquireStay(
         uint _propertyID,
         string memory _dates
-    ) external returns (bool);
+    ) external payable returns (bool);
 
     /**
      * @notice Assigns an applicant as a renter of the property identified by the supplied `_propertyID` for the
@@ -115,6 +116,8 @@ contract Leasy is ILeasy, ERC721 {
     mapping(uint propertyID => address[] applicants) internal applicants;
     mapping(uint propertyID => mapping(address applicant => uint applicantIndex))
         internal applicantsIndexes;
+    mapping(uint propertyID => mapping(address applicant => uint depositAmount))
+        internal applicantsDeposits;
     mapping(uint propertyID => uint count) internal applicantsCount;
 
     mapping(uint propertyID => string[] dates) internal applicantsDates;
@@ -172,17 +175,22 @@ contract Leasy is ILeasy, ERC721 {
         string memory _dates
     )
         external
+        payable
         override
         propertyExists(_propertyID)
         propertyAvailable(_propertyID)
         returns (bool)
     {
-        // TODO Require deposit with amount equal to property's required deposit, and store deposit in contract's balance
+        if (msg.value < properties[_propertyID].depositAmount)
+            revert InsufficientDeposit(_propertyID, msg.value);
+
         // TODO Check dates not already booked (not already in rentersDates)
+
         applicantsIndexes[_propertyID][_msgSender()] = applicants[_propertyID]
             .length;
         applicants[_propertyID].push(_msgSender());
         applicantsDates[_propertyID].push(_dates);
+        applicantsDeposits[_propertyID][_msgSender()] += msg.value;
         applicantsCount[_propertyID]++;
         return true;
     }
@@ -228,26 +236,27 @@ contract Leasy is ILeasy, ERC721 {
         for (uint i = 0; i < externalProperties.length; i++) {
             InternalProperty storage property = properties[i + 1];
             uint propertyID = property.id;
+            uint propertyApplicantsCount = applicantsCount[propertyID];
 
-            address[] memory activeApplicants = new address[](
-                applicantsCount[propertyID]
+            address[] memory _applicants = new address[](
+                propertyApplicantsCount
             );
-            string[] memory activeApplicantsDates = new string[](
-                applicantsCount[propertyID]
+            string[] memory _applicantsDates = new string[](
+                propertyApplicantsCount
             );
             uint activeApplicantsCursor = 0;
             for (uint j = 0; j < applicants[propertyID].length; j++) {
                 address applicant = applicants[propertyID][j];
 
-                if (applicant != address(0)) {
-                    activeApplicants[activeApplicantsCursor] = applicant;
+                if (applicant == address(0)) continue;
 
-                    activeApplicantsDates[
-                        activeApplicantsCursor
-                    ] = applicantsDates[propertyID][j];
+                _applicants[activeApplicantsCursor] = applicant;
 
-                    activeApplicantsCursor++;
-                }
+                _applicantsDates[activeApplicantsCursor] = applicantsDates[
+                    propertyID
+                ][j];
+
+                activeApplicantsCursor++;
             }
 
             externalProperties[i] = Property({
@@ -258,8 +267,8 @@ contract Leasy is ILeasy, ERC721 {
                 picturesUrls: property.picturesUrls,
                 status: property.status,
                 depositAmount: property.depositAmount,
-                applicants: activeApplicants,
-                applicantsDates: activeApplicantsDates,
+                applicants: _applicants,
+                applicantsDates: _applicantsDates,
                 renters: renters[propertyID],
                 rentersDates: rentersDates[propertyID]
             });
