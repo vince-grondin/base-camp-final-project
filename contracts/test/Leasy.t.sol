@@ -17,7 +17,7 @@ contract LeasyTest is Test {
     Leasy.Property private propertyFixture2;
 
     event PropertyAdded(uint propertyID);
-    event PropertyLeasingInitiated(uint propertyID);
+    event PropertyActivated(uint propertyID);
     event PropertyLeaseSignatureSaved(
         uint propertyID,
         address userID,
@@ -148,32 +148,20 @@ contract LeasyTest is Test {
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and that the property does not exist then it reverts with a
+     * @dev Verifies that when calling `activateProperty` and that the property does not exist then it reverts with a
      *      `PropertyDoesNotExist` error.
      * @param _owner Owner of the property.
      * @param _propertyID ID of the property.
-     * @param _renter1 Address of a renter.
-     * @param _renter2 Address of another renter.
-     * @param _renter3 Address of another renter.
      * @param _depositAmount Amount of the deposit to pay before the property can be rented.
      */
-    function test_GivenPropertiesExist_AndPropertyIDNotExist_WhenLeasingProperty_ThenPropertyDoesNotExistRevert(
+    function test_GivenPropertiesExist_AndPropertyIDNotExist_WhenActivatingProperty_ThenPropertyDoesNotExistRevert(
         address _owner,
         uint _propertyID,
-        address _renter1,
-        address _renter2,
-        address _renter3,
         uint _depositAmount
     ) public {
         vm.assume(_owner != address(0));
         vm.assume(_propertyID != propertyFixture1.id && _propertyID > 1);
         vm.assume(_depositAmount != 0);
-        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
-        address[] memory renters = _initializeRenters(
-            _renter1,
-            _renter2,
-            _renter3
-        );
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
@@ -186,85 +174,66 @@ contract LeasyTest is Test {
             )
         );
 
-        leasy.leaseProperty(_propertyID, renters, _depositAmount);
+        leasy.activateProperty(_propertyID, _depositAmount);
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and that the property is not owned by the sender then it reverts
-     *      with a `SenderNotOwner` error.
+     * @dev Verifies that when calling `activateProperty` and that the property is not owned by the sender then it
+     *      reverts with a `SenderNotOwner` error.
      * @param _owner Owner of the property.
-     * @param _renter1 Address of a renter.
-     * @param _renter2 Address of another renter.
-     * @param _renter3 Address of another renter.
+     * @param _otherUser Another user.
      * @param _depositAmount Amount of the deposit to pay before the property can be rented.
      */
-    function test_GivenPropertyExist_AndNotOwner_WhenLeasingProperty_ThenSenderNotOwnerRevert(
+    function test_GivenPropertyExist_AndNotOwner_WhenActivatingProperty_ThenSenderNotOwnerRevert(
         address _owner,
-        address _renter1,
-        address _renter2,
-        address _renter3,
+        address _otherUser,
         uint _depositAmount
     ) public {
         vm.assume(_owner != address(0));
+        vm.assume(_otherUser != address(0) && _otherUser != _owner);
         vm.assume(_depositAmount != 0);
-        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
-        address[] memory renters = _initializeRenters(
-            _renter1,
-            _renter2,
-            _renter3
-        );
         uint propertyID = propertyFixture1.id;
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
         vm.stopPrank();
 
-        vm.startPrank(_renter1);
+        vm.startPrank(_otherUser);
         vm.expectRevert(
             abi.encodeWithSelector(ILeasy.SenderNotOwner.selector, propertyID)
         );
-        leasy.leaseProperty(propertyID, renters, _depositAmount);
+        leasy.activateProperty(propertyID, _depositAmount);
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and that the property owned by the sender it succeeds.
+     * @dev Verifies that when calling `activateProperty` and that the property owned by the sender it succeeds.
      * @param _owner Owner of the property.
-     * @param _renter1 Address of a renter.
-     * @param _renter2 Address of another renter.
-     * @param _renter3 Address of another renter.
      * @param _depositAmount Amount of the deposit to pay before the property can be rented.
      */
-    function test_GivenPropertyExist_AndSenderIsOwner_WhenLeasingProperty_ThenSuccess(
+    function test_GivenPropertyExist_AndSenderIsOwner_WhenActivatingProperty_ThenSuccess(
         address _owner,
-        address _renter1,
-        address _renter2,
-        address _renter3,
         uint _depositAmount
     ) public {
         vm.assume(_owner != address(0));
         vm.assume(_depositAmount != 0);
-        _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
-        address[] memory renters = _initializeRenters(
-            _renter1,
-            _renter2,
-            _renter3
-        );
         uint propertyID = propertyFixture1.id;
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
 
         vm.expectEmit(true, true, true, true, address(leasy));
-        emit PropertyLeasingInitiated(propertyID);
+        emit PropertyActivated(propertyID);
 
-        bool result = leasy.leaseProperty(propertyID, renters, _depositAmount);
+        bool result = leasy.activateProperty(propertyID, _depositAmount);
 
         assertTrue(result);
 
         Leasy.Property memory property = leasy.getProperties()[0];
-        assertEq(property.depositAmount, _depositAmount);
-        assertEq(property.renters, renters);
-        assertEq(property.renters.length, property.signatureStatuses.length);
+        Leasy.Property memory expectedProperty = propertyFixture1;
+        expectedProperty.owner = _owner;
+        expectedProperty.status = ILeasy.PropertyStatus.AVAILABLE;
+        expectedProperty.depositAmount = _depositAmount;
+        _assertEqProperty(property, expectedProperty);
     }
 
     /**
@@ -295,28 +264,22 @@ contract LeasyTest is Test {
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and the leasing process wasn't initiated for the property then
-     *      it reverts with `PropertyNotProcessing` error.
+     * @dev Verifies that when calling `signLease` and the property is inactive then
+     *      it reverts with `PropertyNotAssigned` error.
      * @param _owner Owner of the property.
-     * @param _notRenter Address different than any of the renters addresses.
      */
-    function test_GivenPropertyExist_AndLeasingNotInitiated_WhenSigningLease_ThenSenderNotRenterRevert(
-        address _owner,
-        address _notRenter
+    function test_GivenPropertyExist_AndInactive_WhenSigningLease_ThenPropertyNotAssignedRevert(
+        address _owner
     ) public {
         vm.assume(_owner != address(0));
-        vm.assume(_notRenter != address(0));
         uint propertyID = propertyFixture1.id;
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
-        vm.stopPrank();
-
-        vm.startPrank(_notRenter);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILeasy.PropertyNotProcessing.selector,
+                ILeasy.PropertyNotAssigned.selector,
                 propertyID
             )
         );
@@ -325,22 +288,53 @@ contract LeasyTest is Test {
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and the leasing process was initiated for the property and
-     *      the sender is not a designated renter then it reverts with a `SenderNotRenter` error.
+     * @dev Verifies that when calling `signLease` and the property is active but not assigned then
+     *      it reverts with `PropertyNotAssigned` error.
      * @param _owner Owner of the property.
+     * @param _depositAmount The amount of the deposit required to be submitted for this property.
+     */
+    function test_GivenPropertyExist_AndActiveButNotAssigned_WhenSigningLease_ThenPropertyNotAssignedRevert(
+        address _owner,
+        uint _depositAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_depositAmount != 0);
+        uint propertyID = propertyFixture1.id;
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        leasy.activateProperty(propertyID, _depositAmount);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyNotAssigned.selector,
+                propertyID
+            )
+        );
+
+        leasy.signLease(propertyID, ILeasy.SignatureStatus.APPROVED);
+    }
+
+    /**
+     * @dev Verifies that when calling `signProperty` and the property was assigned to renters and
+     *      the sender is not an assigned renter then it reverts with a `SenderNotRenter` error.
+     * @param _owner Owner of the property.
+     * @param _depositAmount The amount of the deposit required to be submitted for this property.
      * @param _renter1 Address of a renter.
      * @param _renter2 Address of another renter.
      * @param _renter3 Address of another renter.
      * @param _notRenter Address different than any of the renters addresses.
      */
-    function test_GivenPropertyExist_AndLeasingInitiated_AndSenderNotADesignatedRenter_WhenSigningLease_ThenSenderNotRenterRevert(
+    function test_GivenPropertyExist_AndAssigned_AndSenderNotAnAssignedRenter_WhenSigningLease_ThenSenderNotRenterRevert(
         address _owner,
+        uint _depositAmount,
         address _renter1,
         address _renter2,
         address _renter3,
         address _notRenter
     ) public {
         vm.assume(_owner != address(0));
+        vm.assume(_depositAmount != 0);
         _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
         vm.assume(
             _notRenter != address(0) &&
@@ -357,7 +351,8 @@ contract LeasyTest is Test {
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
-        leasy.leaseProperty(propertyID, renters, 1000);
+        leasy.activateProperty(propertyID, _depositAmount);
+        leasy.assignRenters(propertyID, renters);
         vm.stopPrank();
 
         vm.startPrank(_notRenter);
@@ -370,20 +365,23 @@ contract LeasyTest is Test {
     }
 
     /**
-     * @dev Verifies that when calling `leaseProperty` and the leasing process was initiated for the property and
+     * @dev Verifies that when calling `signProperty` and the property was assigned to renters and
      *      the sender is one of the designated renters then the signature status decision is successfully persisted.
      * @param _owner Owner of the property.
+     * @param _depositAmount The amount of the deposit required to be submitted for this property.
      * @param _renter1 Address of a renter.
      * @param _renter2 Address of another renter.
      * @param _renter3 Address of another renter.
      */
-    function test_GivenPropertyExist_AndLeasingInitiated_AndSenderADesignatedRenter_WhenSigningLease_ThenSuccess(
+    function test_GivenPropertyExist_AndAssigned_AndSenderADesignatedRenter_WhenSigningLease_ThenSuccess(
         address _owner,
+        uint _depositAmount,
         address _renter1,
         address _renter2,
         address _renter3
     ) public {
         vm.assume(_owner != address(0));
+        vm.assume(_depositAmount != 0);
         _assumeDistinctRenters(_owner, _renter1, _renter2, _renter3);
         address[] memory renters = _initializeRenters(
             _renter1,
@@ -394,7 +392,8 @@ contract LeasyTest is Test {
 
         vm.startPrank(_owner);
         _addProperty(propertyFixture1);
-        leasy.leaseProperty(propertyID, renters, 1000);
+        leasy.activateProperty(propertyID, 1000);
+        leasy.assignRenters(propertyID, renters);
         vm.stopPrank();
 
         vm.startPrank(_renter2);
@@ -422,7 +421,7 @@ contract LeasyTest is Test {
         leasy.addProperty(
             _property.name,
             _property.fullAddress,
-            _property.leaseAgreementUrl
+            _property.picturesUrls
         );
     }
 
@@ -466,15 +465,15 @@ contract LeasyTest is Test {
         propertyFixture1.id = 1;
         propertyFixture1.name = "Tiny House";
         propertyFixture1.fullAddress = "123 Fake Street";
-        propertyFixture1.leaseAgreementUrl = "https://bitcoin.org/bitcoin.pdf";
-        propertyFixture1.status = ILeasy.PropertyStatus.AVAILABLE;
+        propertyFixture1.picturesUrls = "https://bitcoin.org/bitcoin.pdf";
+        propertyFixture1.status = ILeasy.PropertyStatus.INACTIVE;
         propertyFixture1.owner = address(1);
 
         propertyFixture2.id = 2;
         propertyFixture2.name = "Small House";
         propertyFixture2.fullAddress = "456 Fake Street";
-        propertyFixture2.leaseAgreementUrl = "https://etherscan.io";
-        propertyFixture2.status = ILeasy.PropertyStatus.AVAILABLE;
+        propertyFixture2.picturesUrls = "https://etherscan.io";
+        propertyFixture2.status = ILeasy.PropertyStatus.INACTIVE;
         propertyFixture1.owner = address(2);
     }
 

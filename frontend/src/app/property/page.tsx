@@ -3,7 +3,8 @@ import { properties } from "@/app/_fixtures/Properties"
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useContractWrite, usePrepareContractWrite } from "wagmi";
+import contractData from "../../../../contracts/out/Leasy.sol/Leasy.json";
 
 export default function PropertyForm() {
     const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
@@ -13,34 +14,52 @@ export default function PropertyForm() {
     const router = useRouter();
     const [name, setName] = useState("");
     const [address, setAddress] = useState("");
-    const [leaseAgreementUrl, setLeaseAgreementUrl] = useState("");
+    const [picturesUrls, setPicturesUrls] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+
+    const { config: addPropertyConfig, error: addPropertyError } = usePrepareContractWrite({
+        address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS! as `0x${string}`,
+        abi: contractData.abi,
+        functionName: 'addProperty',
+        args: [name, address, picturesUrls],
+        account: connectedAddress,
+        onSettled(data, error) {
+            console.log(error);
+            setIsSaving(false);
+
+            if (error) return;
+
+            console.log(data);
+        }
+    });
+    const { write: addProperty } = useContractWrite(addPropertyConfig);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         setIsSaving(true);
 
-        // TODO Make API call instead
-        const newPropertyID = await new Promise((resolve) => setTimeout(() => {
-            const newID = properties.length + 1;
-            properties.push({
-                id: newID,
-                name: name.trim(),
-                address: address.trim(),
-                owner: connectedAddress!,
-                leaseAgreementUrl: leaseAgreementUrl.trim(),
-                signers: [],
-                signersStatuses: []
-            });
-            resolve(newID);
-        }, 2000));
+        addProperty?.();
 
-        router.push(`/property/${newPropertyID}`);
+        // const newPropertyID = await new Promise((resolve) => setTimeout(() => {
+        //     const newID = properties.length + 1;
+        //     properties.push({
+        //         id: newID,
+        //         name: name.trim(),
+        //         address: address.trim(),
+        //         owner: connectedAddress!,
+        //         picturesUrls: picturesUrls.trim(),
+        //         signers: [],
+        //         signersStatuses: []
+        //     });
+        //     resolve(newID);
+        // }, 2000));
+
+        // router.push(`/property/${newPropertyID}`);
     }
 
     function isValid() {
-        return name.trim() !== '' && address.trim() !== '' && leaseAgreementUrl !== '';
+        return name.trim() !== '' && address.trim() !== '' && picturesUrls !== '';
     }
 
     return <div>
@@ -71,16 +90,16 @@ export default function PropertyForm() {
                         value={address} />
                 </div>
                 <div className="flex flex-row">
-                    <label htmlFor="leaseAgreementUrl" className="basis-4/12">Lease Agreement URL:</label>
+                    <label htmlFor="picturesUrls" className="basis-4/12">Pictures URLs:</label>
                     <input
                         autoComplete="off"
                         className="dark:text-black"
                         type="text"
-                        id="leaseAgreementUrl"
-                        name="leaseAgreementUrl"
+                        id="picturesUrls"
+                        name="picturesUrls"
                         size={54}
-                        onChange={(event) => setLeaseAgreementUrl(event.target.value)}
-                        value={leaseAgreementUrl} />
+                        onChange={(event) => setPicturesUrls(event.target.value)}
+                        value={picturesUrls} />
                 </div>
                 <div className="flex flex-row justify-end">
                     <button

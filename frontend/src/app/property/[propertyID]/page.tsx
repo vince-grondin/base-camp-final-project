@@ -19,52 +19,49 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
     const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
 
-    const { name, owner, fullAddress, leaseAgreementUrl, renters, signatureStatuses, status } = property;
-
-    function canBeRendered(documentUrl: string) {
-        return leaseAgreementUrl.endsWith('.pdf');
-    }
+    const { name, owner, fullAddress, picturesUrls, renters, signatureStatuses, status, depositAmount } = property;
 
     return <div>
         <div className="mb-5">
             <span className="text-4xl inline-block me-5">🏠 {name}</span>
             <PropertyStatusBadge status={status} />
         </div>
-        <h4>👤 Owned by {owner == connectedAddress ? 'you' : owner}</h4>
 
-        <span>📍 Located at&nbsp;
+        <img title="lease" src={picturesUrls} width={400} height={400} />
+
+        <div className="mt-5">🔑 Owned by {owner == connectedAddress ? 'you' : owner}</div>
+
+        <div>📍 Located at&nbsp;
             <a className="underline" target="_blank" href={`https://www.google.com/maps/place/${fullAddress}`}>{fullAddress}</a>
-        </span>
+        </div>
+
+        <div>💰 Deposit: {depositAmount.toString()}</div>
 
         <hr className="mt-5 mb-5" />
 
-        <h2 className="text-2xl mb-2">📃 Lease</h2>
-        <h3 className="text-lg">✍️ Signatures</h3>
+        <h3 className="text-lg">👤 Renters</h3>
         {(!renters || renters.length === 0) &&
             <div>
-                Lease not sent to any renters.
+                <span className="italic">No renters were assigned to this property.</span>
             </div>
         }
         {renters && renters.length > 0 &&
             <ul>
                 {renters.map((address, index) =>
-                    <SignerRow {...{ address, status: signatureStatuses[index] ?? null }} />)
+                    <RenterRow {...{ address, status: signatureStatuses[index] ?? null }} />)
                 }
             </ul>
         }
 
-        <h3 className="text-lg mt-5">Agreement</h3>
-        {canBeRendered(leaseAgreementUrl) && <iframe title="lease" src={leaseAgreementUrl} width={800} height={800} />}
-        {!canBeRendered(leaseAgreementUrl) && <a className="underline" target="_blank" href={leaseAgreementUrl}>Open 🔗</a>}
     </div>
 }
 
-type SignerRowProps = {
+type RenterRowProps = {
     address: `0x${string}`,
     status: SignerStatus | null
 }
 
-function SignerRow({ address, status }: SignerRowProps) {
+function RenterRow({ address, status }: RenterRowProps) {
     function statusIcon() {
         switch (status) {
             case SignerStatus.APPROVED: return <span>✅</span>;
