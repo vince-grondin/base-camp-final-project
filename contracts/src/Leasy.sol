@@ -9,26 +9,28 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
  */
 interface ILeasy is IERC721 {
     enum PropertyStatus {
-        AVAILABLE, // Default value, keep this first
-        PROCESSING,
+        INACTIVE, // Default, keep first
+        AVAILABLE,
+        ASSIGNED,
         RENTING
     }
 
     enum SignatureStatus {
-        DEFAULT,
+        DEFAULT, // Default, keep first
         PENDING,
         APPROVED,
         DECLINED
     }
 
     error PropertyDoesNotExist(uint propertyID);
+    error PropertyNotAssigned(uint propertyID);
     error PropertyNotAvailable(uint propertyID);
-    error PropertyNotProcessing(uint propertyID);
+    error PropertyNotInactive(uint propertyID);
     error SenderNotOwner(uint propertyID);
     error SenderNotRenter(uint propertyID);
 
     event PropertyAdded(uint propertyID);
-    event PropertyLeasingInitiated(uint propertyID);
+    event PropertyActivated(uint propertyID);
     event PropertyLeaseSignatureSaved(
         uint propertyID,
         address userID,
@@ -40,7 +42,7 @@ interface ILeasy is IERC721 {
         string name;
         string fullAddress;
         address owner;
-        string leaseAgreementUrl;
+        string picturesUrls;
         PropertyStatus status;
         uint depositAmount;
         address[] renters;
@@ -51,12 +53,12 @@ interface ILeasy is IERC721 {
      * @notice Adds a property.
      * @param _name The name of the property.
      * @param _fullAddress The full address of the property.
-     * @param _leaseAgreementUrl The URL to the lease agreement.
+     * @param _picturesUrls The comma-separated string of URLs pictures of the property.
      */
     function addProperty(
         string memory _name,
         string memory _fullAddress,
-        string memory _leaseAgreementUrl
+        string memory _picturesUrls
     ) external returns (uint propertyID);
 
     /**
@@ -66,16 +68,24 @@ interface ILeasy is IERC721 {
     function getProperties() external returns (Property[] memory);
 
     /**
-     * @notice Initiates the leasing process by setting a deposit amount, an array of potential renters and the date
-     *         the lease ends.
+     * @notice Activates the property identified by the supplied `_propertyID` by making it available and
+     *          defining a deposit amount.
      * @param _propertyID The ID of the property.
-     * @param _renters The addresses of the potential renters.
      * @param _depositAmount The requested deposted amount.
      */
-    function leaseProperty(
+    function activateProperty(
         uint _propertyID,
-        address[] memory _renters,
         uint _depositAmount
+    ) external returns (bool);
+
+    /**
+     * @notice Assigns renters to the property identified by the supplied `_propertyID`.
+     * @param _propertyID The ID of the property.
+     * @param _renters The renters of the property.
+     */
+    function assignRenters(
+        uint _propertyID,
+        address[] memory _renters
     ) external returns (bool);
 
     /**
@@ -100,7 +110,7 @@ contract Leasy is ILeasy, ERC721 {
         string name;
         string fullAddress;
         address owner;
-        string leaseAgreementUrl;
+        string picturesUrls;
         PropertyStatus status;
         uint depositAmount;
     }
@@ -127,7 +137,7 @@ contract Leasy is ILeasy, ERC721 {
     function addProperty(
         string memory _name,
         string memory _fullAddress,
-        string memory _leaseAgreementUrl
+        string memory _picturesUrls
     ) external override returns (uint propertyID) {
         propertyID = properties.length;
         _mint(_msgSender(), propertyID);
@@ -136,7 +146,7 @@ contract Leasy is ILeasy, ERC721 {
         property.id = propertyID;
         property.name = _name;
         property.fullAddress = _fullAddress;
-        property.leaseAgreementUrl = _leaseAgreementUrl;
+        property.picturesUrls = _picturesUrls;
         property.owner = _msgSender();
 
         emit PropertyAdded(propertyID);
@@ -158,7 +168,7 @@ contract Leasy is ILeasy, ERC721 {
                 name: property.name,
                 fullAddress: property.fullAddress,
                 owner: property.owner,
-                leaseAgreementUrl: property.leaseAgreementUrl,
+                picturesUrls: property.picturesUrls,
                 status: property.status,
                 depositAmount: property.depositAmount,
                 renters: renters[property.id],
@@ -168,10 +178,30 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /// @inheritdoc ILeasy
-    function leaseProperty(
+    function activateProperty(
         uint _propertyID,
-        address[] memory _renters,
         uint _depositAmount
+    )
+        external
+        override
+        propertyExists(_propertyID)
+        propertyInactive(_propertyID)
+        isOwner(_propertyID)
+        returns (bool)
+    {
+        InternalProperty storage property = properties[_propertyID];
+        property.status = PropertyStatus.AVAILABLE;
+        property.depositAmount = _depositAmount;
+
+        emit PropertyActivated(_propertyID);
+
+        return true;
+    }
+
+    /// @inheritdoc ILeasy
+    function assignRenters(
+        uint _propertyID,
+        address[] memory _renters
     )
         external
         override
@@ -181,8 +211,6 @@ contract Leasy is ILeasy, ERC721 {
         returns (bool)
     {
         InternalProperty storage property = properties[_propertyID];
-        property.status = PropertyStatus.PROCESSING;
-        property.depositAmount = _depositAmount;
         property._initializeRenters(
             _renters,
             renters,
@@ -193,9 +221,7 @@ contract Leasy is ILeasy, ERC721 {
             _renters.length,
             signatureStatuses
         );
-
-        emit PropertyLeasingInitiated(_propertyID);
-
+        property.status = PropertyStatus.ASSIGNED;
         return true;
     }
 
@@ -207,7 +233,7 @@ contract Leasy is ILeasy, ERC721 {
         external
         override
         propertyExists(_propertyID)
-        propertyProcessing(_propertyID)
+        propertyAssigned(_propertyID)
         isRenter(_propertyID)
         returns (bool)
     {
@@ -262,12 +288,22 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /**
-     * @dev Checks that the property identified by `_propertyID` has the `PropertyStatus.AVAILABLE` `status`.
+     * @dev Checks that the property identified by `_propertyID` has the `PropertyStatus.INACTIVE` `status`.
      * @param _propertyID The ID of the property.
      */
-    modifier propertyProcessing(uint _propertyID) {
-        if (properties[_propertyID].status != PropertyStatus.PROCESSING)
-            revert PropertyNotProcessing(_propertyID);
+    modifier propertyInactive(uint _propertyID) {
+        if (properties[_propertyID].status != PropertyStatus.INACTIVE)
+            revert PropertyNotInactive(_propertyID);
+        _;
+    }
+
+    /**
+     * @dev Checks that the property identified by `_propertyID` has the `PropertyStatus.ASSIGNED` `status`.
+     * @param _propertyID The ID of the property.
+     */
+    modifier propertyAssigned(uint _propertyID) {
+        if (properties[_propertyID].status != PropertyStatus.ASSIGNED)
+            revert PropertyNotAssigned(_propertyID);
         _;
     }
 }
