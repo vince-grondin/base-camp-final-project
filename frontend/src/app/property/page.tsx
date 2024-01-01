@@ -24,12 +24,9 @@ export default function PropertyForm() {
         args: [name, address, picturesUrls],
         account: connectedAddress,
         onSettled(data, error) {
-            console.log(error);
             setIsSaving(false);
 
             if (error) return;
-
-            console.log(data);
         }
     });
     const { write: addProperty } = useContractWrite(addPropertyConfig);
