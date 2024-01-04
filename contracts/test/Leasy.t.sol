@@ -363,6 +363,60 @@ contract LeasyTest is Test {
     }
 
     /**
+     * @dev Verifies that calling `getProperty` when the property does not exist reverts with a `PropertyDoesNotExist`
+     *      error
+     * @param _owner The address of the user who added a property.
+     * @param _retriever The address of the user getting an inexisting property.
+     */
+    function test_GivenPropertyNotExist_WhenGettingProperty_ThenPropertyDoesNotExistRevert(
+        address _owner,
+        address _retriever,
+        uint _inexistingPropertyID
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_retriever != address(0) && _retriever != _owner);
+        vm.assume(
+            _inexistingPropertyID > 0 &&
+                _inexistingPropertyID != propertyFixture1.id
+        );
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.startPrank(_retriever);
+
+        _expectPropertyDoesNotExistRevert(_inexistingPropertyID);
+
+        leasy.getProperty(_inexistingPropertyID);
+    }
+
+    /**
+     * @dev Verifies that calling `getProperty` for a property that exists succeeds.
+     * @param _owner The address of the user who added a property.
+     * @param _retriever The address of the user getting an inexisting property.
+     */
+    function test_GivenPropertyExists_WhenGettingProperty_ThenSuccess(
+        address _owner,
+        address _retriever
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_retriever != address(0) && _retriever != _owner);
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        vm.startPrank(_retriever);
+
+        ILeasy.Property memory result = leasy.getProperty(propertyFixture1.id);
+
+        ILeasy.Property memory expectedProperty = propertyFixture1;
+        expectedProperty.owner = _owner;
+        _assertEqProperty(result, expectedProperty);
+    }
+
+    /**
      * @dev Helper function that delegates to `leasy#addProperty`.
      * @param _property The property to add.
      */
