@@ -50,7 +50,7 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
         },
     });
 
-    if (property === null) return <div>Loading</div>
+    if (property === null) return <div>Loading...</div>
 
     const {
         name,
