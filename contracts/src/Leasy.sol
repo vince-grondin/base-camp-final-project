@@ -8,23 +8,38 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
  * @author Roch
  */
 interface ILeasy is IERC721 {
+    enum BookingStatus {
+        REQUESTED, // Default, keep first
+        ACCEPTED
+    }
+
     enum PropertyStatus {
         INACTIVE, // Default, keep first
         AVAILABLE
     }
 
-    error DuplicateApplicant(uint propertyID, address applicant);
+    error BookingDoesNotExist(uint bookingID);
+
     error InsufficientDeposit(uint propertyID, uint submittedAmount);
     error PropertyDoesNotExist(uint propertyID);
-    error PropertyNotAssigned(uint propertyID);
     error PropertyNotAvailable(uint propertyID);
     error PropertyNotInactive(uint propertyID);
     error SenderIsOwner(uint propertyID);
     error SenderNotOwner(uint propertyID);
     error SenderNotRenter(uint propertyID);
 
+    event BookingRequested(uint propertyID, uint bookingID);
     event PropertyAdded(uint propertyID);
     event PropertyActivated(uint propertyID);
+
+    struct Booking {
+        uint id;
+        address booker;
+        uint propertyID;
+        uint depositAmount;
+        string[] dates;
+        BookingStatus status;
+    }
 
     struct Property {
         uint id;
@@ -34,10 +49,6 @@ interface ILeasy is IERC721 {
         string picturesUrls;
         PropertyStatus status;
         uint depositAmount;
-        address[] applicants;
-        string[] applicantsDates;
-        address[] renters;
-        string[] rentersDates;
     }
 
     /**
@@ -64,27 +75,29 @@ interface ILeasy is IERC721 {
     ) external returns (bool);
 
     /**
-     * @notice Inquires for a stay at the property identified by the supplied `_propertyID`.
+     * @notice Request a booking at the property identified by the supplied `_propertyID`.
      * @param _propertyID The ID of the property.
-     * @param _dates Comma-separated list of dates the sender is interested in staying at the property.
+     * @param _dates The list of dates the sender is interested in staying at the property.
      */
-    function inquireStay(
+    function requestBooking(
         uint _propertyID,
-        string memory _dates
+        string[] memory _dates
     ) external payable returns (bool);
 
     /**
-     * @notice Assigns an applicant as a renter of the property identified by the supplied `_propertyID` for the
-     *         specified dates.
-     * @param _propertyID The ID of the property.
-     * @param _applicant The applicant to designate as a renter.
-     * @param _dates The dates the applicant being designated as a renter will rent the property.
+     * @notice Accepts a booking.
+     * @param _bookingID The ID of the booking.
      */
-    function selectApplicant(
-        uint _propertyID,
-        address _applicant,
-        string memory _dates
-    ) external returns (bool);
+    function acceptBooking(uint _bookingID) external returns (bool);
+
+    /**
+     * @notice Gets the bookings submitted for the property identified by the supplied `_propertyID`.
+     * @param _propertyID The ID of the property.
+     * @return propertyBookings The bookings submitted for the property identified by the supplied `_propertyID`.
+     */
+    function getBookings(
+        uint _propertyID
+    ) external returns (Booking[] memory propertyBookings);
 
     /**
      * @notice Gets all properties.
@@ -98,35 +111,20 @@ interface ILeasy is IERC721 {
  * @author Roch
  */
 contract Leasy is ILeasy, ERC721 {
-    struct InternalProperty {
-        uint id;
-        string name;
-        string fullAddress;
-        address owner;
-        string picturesUrls;
-        PropertyStatus status;
-        uint depositAmount;
-    }
+    Property[] internal properties;
+    mapping(uint propertyID => uint propertyIndex) internal propertyIndexes;
 
-    InternalProperty[] internal properties;
-
-    mapping(uint propertyID => address[] renters) internal renters;
-    mapping(uint propertyID => string[] dates) internal rentersDates;
-
-    mapping(uint propertyID => address[] applicants) internal applicants;
-    mapping(uint propertyID => mapping(address applicant => uint applicantIndex))
-        internal applicantsIndexes;
-    mapping(uint propertyID => mapping(address applicant => uint depositAmount))
-        internal applicantsDeposits;
-    mapping(uint propertyID => uint count) internal applicantsCount;
-
-    mapping(uint propertyID => string[] dates) internal applicantsDates;
+    Booking[] internal bookings;
+    mapping(uint bookingID => uint bookingIndex) internal bookingsIndexes;
+    mapping(uint propertyID => uint[] bookingIDs) propertyBookingIDs;
 
     constructor(
         string memory _name,
         string memory _symbol
     ) ERC721(_name, _symbol) {
+        // Avoid 0 index
         properties.push();
+        bookings.push();
     }
 
     /// @inheritdoc ILeasy
@@ -135,10 +133,11 @@ contract Leasy is ILeasy, ERC721 {
         string memory _fullAddress,
         string memory _picturesUrls
     ) external override returns (uint propertyID) {
+        // TODO Support status param to activate when adding, support deposit amount to set deposit when adding
         propertyID = properties.length;
         _mint(_msgSender(), propertyID);
 
-        InternalProperty storage property = properties.push();
+        Property storage property = properties.push();
         property.id = propertyID;
         property.name = _name;
         property.fullAddress = _fullAddress;
@@ -160,7 +159,7 @@ contract Leasy is ILeasy, ERC721 {
         isOwner(_propertyID)
         returns (bool)
     {
-        InternalProperty storage property = properties[_propertyID];
+        Property storage property = properties[_propertyID];
         property.status = PropertyStatus.AVAILABLE;
         property.depositAmount = _depositAmount;
 
@@ -170,9 +169,9 @@ contract Leasy is ILeasy, ERC721 {
     }
 
     /// @inheritdoc ILeasy
-    function inquireStay(
+    function requestBooking(
         uint _propertyID,
-        string memory _dates
+        string[] memory _dates
     )
         external
         payable
@@ -184,14 +183,27 @@ contract Leasy is ILeasy, ERC721 {
         if (msg.value < properties[_propertyID].depositAmount)
             revert InsufficientDeposit(_propertyID, msg.value);
 
-        // TODO Check dates not already booked (not already in rentersDates)
+        // TODO Check dates not already booked for this property
 
-        applicantsIndexes[_propertyID][_msgSender()] = applicants[_propertyID]
-            .length;
-        applicants[_propertyID].push(_msgSender());
-        applicantsDates[_propertyID].push(_dates);
-        applicantsDeposits[_propertyID][_msgSender()] += msg.value;
-        applicantsCount[_propertyID]++;
+        uint bookingID = bookings.length;
+        uint bookingIndex = bookings.length;
+        bookings.push(
+            Booking({
+                id: bookingID,
+                booker: _msgSender(),
+                propertyID: _propertyID,
+                depositAmount: msg.value,
+                dates: _dates,
+                status: BookingStatus.REQUESTED
+            })
+        );
+
+        bookingsIndexes[bookingID] = bookingIndex;
+
+        propertyBookingIDs[_propertyID].push(bookingID);
+
+        emit BookingRequested(_propertyID, bookingID);
+
         return true;
     }
 
@@ -199,29 +211,39 @@ contract Leasy is ILeasy, ERC721 {
      * @inheritdoc ILeasy
      * @dev Transfers the `_applicant` address from `applicants` to `renters`.
      */
-    function selectApplicant(
-        uint _propertyID,
-        address _applicant,
-        string memory _dates
+    function acceptBooking(
+        uint _bookingID
     )
         external
         override
-        propertyExists(_propertyID)
-        propertyAvailable(_propertyID)
-        isOwner(_propertyID)
+        bookingExists(_bookingID)
+        isOwnerByBookingID(_bookingID)
         returns (bool)
     {
-        renters[_propertyID].push(_applicant);
-        rentersDates[_propertyID].push(_dates);
-
-        uint applicantIndex = applicantsIndexes[_propertyID][_applicant];
-        delete applicants[_propertyID][applicantIndex];
-        delete applicantsDates[_propertyID][applicantIndex];
-        applicantsCount[_propertyID]--;
+        // TODO Check dates not already booked for this property
+        bookings[bookingsIndexes[_bookingID]].status = BookingStatus.ACCEPTED;
 
         // TODO Return deposit of applicants that selected any dates the same as any of this selected applicant's dates
 
         return true;
+    }
+
+    /// @inheritdoc ILeasy
+    function getBookings(
+        uint _propertyID
+    )
+        external
+        view
+        override
+        propertyExists(_propertyID)
+        returns (Booking[] memory propertyBookings)
+    {
+        uint[] memory bookingIDs = propertyBookingIDs[_propertyID];
+        propertyBookings = new Booking[](bookingIDs.length);
+
+        for (uint i = 0; i < bookingIDs.length; i++) {
+            propertyBookings[i] = bookings[bookingsIndexes[bookingIDs[i]]];
+        }
     }
 
     /// @inheritdoc ILeasy
@@ -232,56 +254,21 @@ contract Leasy is ILeasy, ERC721 {
         returns (Property[] memory externalProperties)
     {
         externalProperties = new Property[](properties.length - 1);
+        uint cursor = 0;
 
-        for (uint i = 0; i < externalProperties.length; i++) {
-            InternalProperty storage property = properties[i + 1];
-            uint propertyID = property.id;
-            uint propertyApplicantsCount = applicantsCount[propertyID];
-
-            address[] memory _applicants = new address[](
-                propertyApplicantsCount
-            );
-            string[] memory _applicantsDates = new string[](
-                propertyApplicantsCount
-            );
-            uint activeApplicantsCursor = 0;
-            for (uint j = 0; j < applicants[propertyID].length; j++) {
-                address applicant = applicants[propertyID][j];
-
-                if (applicant == address(0)) continue;
-
-                _applicants[activeApplicantsCursor] = applicant;
-
-                _applicantsDates[activeApplicantsCursor] = applicantsDates[
-                    propertyID
-                ][j];
-
-                activeApplicantsCursor++;
-            }
-
-            externalProperties[i] = Property({
-                id: propertyID,
-                name: property.name,
-                fullAddress: property.fullAddress,
-                owner: property.owner,
-                picturesUrls: property.picturesUrls,
-                status: property.status,
-                depositAmount: property.depositAmount,
-                applicants: _applicants,
-                applicantsDates: _applicantsDates,
-                renters: renters[propertyID],
-                rentersDates: rentersDates[propertyID]
-            });
+        for (uint i = 0; i < properties.length; i++) {
+            if (i == 0) continue;
+            externalProperties[cursor++] = properties[i];
         }
     }
 
     /**
-     * @dev Checks that the sender is not the owner of the property identified by `_propertyID`.
-     * @param _propertyID The ID of the property.
+     * @dev Checks that the booking identified by `_bookingID` is in the `bookings` array.
+     * @param _bookingID The ID of the booking.
      */
-    modifier isNotOwner(uint _propertyID) {
-        if (_msgSender() == _ownerOf(_propertyID))
-            revert SenderIsOwner(_propertyID);
+    modifier bookingExists(uint _bookingID) {
+        if (_bookingID >= bookings.length || bookings[_bookingID].id == 0)
+            revert BookingDoesNotExist(_bookingID);
         _;
     }
 
@@ -292,6 +279,17 @@ contract Leasy is ILeasy, ERC721 {
     modifier isOwner(uint _propertyID) {
         if (_msgSender() != _ownerOf(_propertyID))
             revert SenderNotOwner(_propertyID);
+        _;
+    }
+
+    /**
+     * @dev Checks that the sender owns the property identified by `_propertyID`.
+     * @param _bookingID The ID of the property.
+     */
+    modifier isOwnerByBookingID(uint _bookingID) {
+        uint propertyID = bookings[bookingsIndexes[_bookingID]].propertyID;
+        if (_msgSender() != _ownerOf(propertyID))
+            revert SenderNotOwner(propertyID);
         _;
     }
 

@@ -16,6 +16,9 @@ contract LeasyTest is Test {
     Leasy.Property private propertyFixture1;
     Leasy.Property private propertyFixture2;
 
+    Leasy.Booking private bookingFixture1;
+
+    event BookingRequested(uint propertyID, uint bookingID);
     event PropertyAdded(uint propertyID);
     event PropertyActivated(uint propertyID);
 
@@ -162,12 +165,7 @@ contract LeasyTest is Test {
         _addProperty(propertyFixture1);
         vm.stopPrank();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ILeasy.PropertyDoesNotExist.selector,
-                _propertyID
-            )
-        );
+        _expectPropertyDoesNotExistRevert(_propertyID);
 
         leasy.activateProperty(_propertyID, _depositAmount);
     }
@@ -232,6 +230,139 @@ contract LeasyTest is Test {
     }
 
     /**
+     * @dev Verifies that calling `requestBooking` with the ID of a property that does not exist reverts with a
+     *      `PropertyDoesNotExist` error.
+     * @param _owner The owner of the property.
+     * @param _booker The user submitting a request to book the property.
+     * @param _inexistingPropertyID The ID of a property that does not exist.
+     */
+    function test_GivenPropertyNotExist_WhenRequestingBooking_ThenPropertyDoesNotExistRevert(
+        address _owner,
+        address _booker,
+        uint _inexistingPropertyID
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_booker != address(0));
+        vm.assume(
+            _inexistingPropertyID != propertyFixture1.id &&
+                _inexistingPropertyID > 1
+        );
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        _expectPropertyDoesNotExistRevert(_inexistingPropertyID);
+
+        vm.startPrank(_booker);
+        leasy.requestBooking(_inexistingPropertyID, bookingFixture1.dates);
+    }
+
+    /**
+     * @dev Verifies that calling `requestBooking` with the ID of a property that is not available reverts with a
+     *      `PropertyNotAvailable` error.
+     * @param _owner The owner of the property.
+     * @param _booker The user submitting a request to book the property.
+     */
+    function test_GivenPropertyExists_AndPropertyInactive_WhenRequestingBooking_ThenPropertyNotAvailableRevert(
+        address _owner,
+        address _booker
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_booker != address(0));
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        vm.stopPrank();
+
+        _expectPropertyNotAvailableRevert(propertyFixture1.id);
+
+        leasy.requestBooking(propertyFixture1.id, bookingFixture1.dates);
+    }
+
+    /**
+     * @dev Verifies that calling `requestBooking` with a call balance lower than the property's required deposit amount
+     *      reverts with a `InsufficientDeposit` error.
+     * @param _owner The owner of the property.
+     * @param _booker The user submitting a request to book the property.
+     * @param _bookerBalance The balance of the user submitting a request to book the property.
+     * @param _requiredDepositAmount The required deposit amount set for the property.
+     * @param _callAmount The amount sent with the `requestBooking` call.
+     */
+    function test_GivenPropertyExists_AndActive_AndCallAmountLowerThanRequiredPropertyDeposit_WhenRequestingBooking_ThenInsufficientDepositRevert(
+        address _owner,
+        address _booker,
+        uint _bookerBalance,
+        uint _requiredDepositAmount,
+        uint _callAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_booker != address(0));
+        uint bookerBalance = 1000;
+        vm.assume(_requiredDepositAmount > 0 && _requiredDepositAmount < 1000);
+        vm.assume(_bookerBalance > _requiredDepositAmount);
+        vm.assume(_callAmount > 0 && _callAmount < _requiredDepositAmount);
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        leasy.activateProperty(propertyFixture1.id, _requiredDepositAmount);
+        vm.stopPrank();
+
+        _expectInsufficientDepositRevert(propertyFixture1.id, _callAmount);
+
+        vm.deal(_booker, bookerBalance * 1 wei);
+        vm.startPrank(_booker);
+        leasy.requestBooking{value: _callAmount}(
+            propertyFixture1.id,
+            bookingFixture1.dates
+        );
+    }
+
+    /**
+     * @dev Verifies that calling `requestBooking` with a call value that is greater or equal than the property's
+     *      required deposit amount for a property that exists and that is active succeeds.
+     * @param _owner The owner of the property.
+     * @param _booker The user submitting a request to book the property.
+     * @param _bookerBalance The balance of the user submitting a request to book the property.
+     * @param _requiredDepositAmount The required deposit amount set for the property.
+     * @param _callAmount The amount sent with the `requestBooking` call.
+     */
+    function test_GivenPropertyExists_AndActive_AndCallAmountEqualOrGreaterThanRequiredPropertyDeposit_WhenRequestingBooking_ThenSuccess(
+        address _owner,
+        address _booker,
+        uint _bookerBalance,
+        uint _requiredDepositAmount,
+        uint _callAmount
+    ) public {
+        vm.assume(_owner != address(0));
+        vm.assume(_booker != address(0));
+        vm.assume(_requiredDepositAmount > 0 && _requiredDepositAmount < 1000);
+        vm.assume(_bookerBalance > _requiredDepositAmount);
+        vm.assume(
+            _callAmount >= _requiredDepositAmount &&
+                _callAmount < _bookerBalance
+        );
+
+        vm.startPrank(_owner);
+        _addProperty(propertyFixture1);
+        leasy.activateProperty(propertyFixture1.id, _requiredDepositAmount);
+        vm.stopPrank();
+
+        vm.deal(_booker, _bookerBalance * 1 wei);
+        vm.startPrank(_booker);
+
+        vm.expectEmit(true, true, true, true, address(leasy));
+        emit BookingRequested(propertyFixture1.id, 1);
+
+        bool result = leasy.requestBooking{value: _callAmount}(
+            propertyFixture1.id,
+            bookingFixture1.dates
+        );
+
+        assertTrue(result);
+    }
+
+    /**
      * @dev Helper function that delegates to `leasy#addProperty`.
      * @param _property The property to add.
      */
@@ -277,6 +408,54 @@ contract LeasyTest is Test {
     }
 
     /**
+     * @dev Verifies that a `InsufficientDeposit` occurs.
+     * @param _propertyID The ID of the property.
+     * @param _msgValue The value sent with the call (msg.value).
+     */
+    function _expectInsufficientDepositRevert(
+        uint _propertyID,
+        uint _msgValue
+    ) private {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.InsufficientDeposit.selector,
+                _propertyID,
+                _msgValue
+            )
+        );
+    }
+
+    /**
+     * @dev Verifies that a `PropertyDoesNotExist` occurs.
+     * @param _inexistingPropertyID The ID of the property that does not exist.
+     */
+    function _expectPropertyDoesNotExistRevert(
+        uint _inexistingPropertyID
+    ) private {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyDoesNotExist.selector,
+                _inexistingPropertyID
+            )
+        );
+    }
+
+    /**
+     * @dev Verifies that a `PropertyNotAvailable` occurs.
+     * @param _notAvailablePropertyID The ID of the property that is inactive.
+     */
+    function _expectPropertyNotAvailableRevert(
+        uint _notAvailablePropertyID
+    ) private {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILeasy.PropertyNotAvailable.selector,
+                _notAvailablePropertyID
+            )
+        );
+    }
+
+    /**
      * @dev Initializes the test fixtures.
      */
     function _initializeTestFixtures() private {
@@ -293,6 +472,14 @@ contract LeasyTest is Test {
         propertyFixture2.picturesUrls = "https://etherscan.io";
         propertyFixture2.status = ILeasy.PropertyStatus.INACTIVE;
         propertyFixture1.owner = address(2);
+
+        bookingFixture1.id = 1;
+        bookingFixture1.propertyID = propertyFixture1.id;
+        bookingFixture1.depositAmount = 1000;
+        bookingFixture1.dates = new string[](2);
+        bookingFixture1.dates[0] = "1/5/24";
+        bookingFixture1.dates[1] = "1/6/24";
+        bookingFixture1.status = ILeasy.BookingStatus.REQUESTED;
     }
 
     /**

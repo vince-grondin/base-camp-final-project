@@ -1,8 +1,10 @@
 "use client";
-import { PropertyStatus, SignerStatus } from "@/app/Models";
+import { Booking, BookingStatus } from "@/app/Models";
 import { PropertyStatusBadge } from "@/app/_components/PropertyStatusBadge";
 import { usePropertiesContext } from "@/app/_contexts/state";
-import { useAccount } from "wagmi";
+import { useState } from "react";
+import { useAccount, useContractRead } from "wagmi";
+import contractData from '../../../../../contracts/out/Leasy.sol/Leasy.json';
 
 export type PropertyDetailsParams = {
     propertyID: number
@@ -17,24 +19,33 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
     const property = properties.find(it => it.id == propertyID);
     if (!property) throw new Error(`Property ${propertyID} not found!`);
 
+    const [bookings, setBookings] = useState<Booking[]>([]);
+    const pendingBookings = bookings.filter(({ status }) => status === BookingStatus.REQUESTED);
+    const acceptedBookings = bookings.filter(({ status }) => status === BookingStatus.ACCEPTED);
     const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
+
+    const { data, isError, isLoading } = useContractRead({
+        address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
+        abi: contractData.abi,
+        functionName: 'getBookings',
+        args: [propertyID],
+        onError(error) {
+            console.log(error);
+        },
+        onSuccess(data) {
+            console.log(data);
+            setBookings(data as Booking[]);
+        },
+    });
 
     const {
         name,
         owner,
         fullAddress,
         picturesUrls,
-        applicants,
-        applicantsDates,
-        renters,
-        rentersDates,
         status,
         depositAmount
     } = property;
-
-    function shouldShowApplicants() {
-        return applicants.length > 0 && renters.length === 0;
-    }
 
     return <div>
         <div className="mb-5">
@@ -50,60 +61,30 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
             <a className="underline" target="_blank" href={`https://www.google.com/maps/place/${fullAddress}`}>{fullAddress}</a>
         </div>
 
-        {status !== PropertyStatus.INACTIVE &&
-            <>
-                <div>💰 Deposit: {depositAmount.toString()}</div>
+        <div>💰 Deposit: {depositAmount.toString()} wei</div>
 
-                {connectedAddress === owner && <ApplicantsSection {...{ applicants, applicantsDates }} />}
+        <hr className="mt-5 mb-5" />
 
-                {connectedAddress === owner && <RentersSection {...{ renters, rentersDates }} />}
-            </>
+        <h3 className="text-xl">Bookings</h3>
+        <h3 className="text-lg">👀 Pending Bookings</h3>
+        {pendingBookings.length == 0 && <div><span className="italic">No pending bookings.</span></div>
         }
-    </div>
-}
-
-type ApplicantsSectionProps = {
-    applicants: `0x${string}`[],
-    applicantsDates: string[]
-}
-
-function ApplicantsSection({ applicants, applicantsDates }: ApplicantsSectionProps) {
-    return <div className="mt-5 mb-5">
-        <h3 className="text-lg">👋 Applicants</h3>
-        {(!applicants || applicants.length === 0) &&
-            <div>
-                <span className="italic">No new applicants for this property.</span>
-            </div>
-        }
-        {applicants && applicants.length > 0 &&
+        {pendingBookings.length > 0 &&
             <ul>
-                {applicants.map((address, index) =>
-                    <li>{address} - {applicantsDates[index].replaceAll(',', ', ')}</li>
+                {pendingBookings.map(({ booker, dates }, index) =>
+                    <li>{booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
+                )}
+            </ul>
+        }
+
+        <h3 className="text-lg mt-2">✅ Accepted Bookings</h3>
+        {acceptedBookings.length == 0 && <div><span className="italic">No accepted bookings.</span></div>}
+        {acceptedBookings.length > 0 &&
+            <ul>
+                {acceptedBookings.map(({ booker, dates }, index) =>
+                    <li>{booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
                 )}
             </ul>
         }
     </div>
-}
-
-type RentersSectionProps = {
-    renters: `0x${string}`[],
-    rentersDates: string[]
-}
-
-function RentersSection({ renters, rentersDates }: RentersSectionProps) {
-    return <>
-        <h3 className="text-lg">👤 Renters</h3>
-        {(!renters || renters.length === 0) &&
-            <div>
-                <span className="italic">No renters were assigned to this property.</span>
-            </div>
-        }
-        {renters && renters.length > 0 &&
-            <ul>
-                {renters.map((address, index) =>
-                    <li>{address} - {rentersDates[index].replaceAll(',', ', ')}</li>
-                )}
-            </ul>
-        }
-    </>
 }

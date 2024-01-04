@@ -1,3 +1,14 @@
+export type Booking = {
+    id: number,
+    booker: `0x${string}`,
+    propertyID: number;
+    depositAmount: number;
+    dates: string[];
+    status: BookingStatus;
+}
+
+export enum BookingStatus { REQUESTED, ACCEPTED }
+
 export type Property = {
     id: number,
     name: string,
@@ -5,11 +16,7 @@ export type Property = {
     owner: `0x${string}`,
     picturesUrls: string,
     status: PropertyStatus,
-    depositAmount: number,
-    applicants: `0x${string}`[],
-    applicantsDates: string[],
-    renters: `0x${string}`[],
-    rentersDates: string[],
+    depositAmount: number
 }
 
 export enum PropertyStatus { INACTIVE, AVAILABLE }
