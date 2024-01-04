@@ -1,7 +1,6 @@
 "use client";
-import { Booking, BookingStatus } from "@/app/Models";
+import { Booking, BookingStatus, Property } from "@/app/Models";
 import { PropertyStatusBadge } from "@/app/_components/PropertyStatusBadge";
-import { usePropertiesContext } from "@/app/_contexts/state";
 import { useState } from "react";
 import { useAccount, useContractRead } from "wagmi";
 import contractData from '../../../../../contracts/out/Leasy.sol/Leasy.json';
@@ -15,16 +14,30 @@ export type PropertyDetailsProps = {
 }
 
 export default function PropertyDetails({ params: { propertyID } }: PropertyDetailsProps) {
-    const properties = usePropertiesContext();
-    const property = properties.find(it => it.id == propertyID);
-    if (!property) throw new Error(`Property ${propertyID} not found!`);
+    const [property, setProperty] = useState<Property | null>(null);
 
     const [bookings, setBookings] = useState<Booking[]>([]);
     const pendingBookings = bookings.filter(({ status }) => status === BookingStatus.REQUESTED);
     const acceptedBookings = bookings.filter(({ status }) => status === BookingStatus.ACCEPTED);
     const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
 
-    const { data, isError, isLoading } = useContractRead({
+    useContractRead({
+        address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
+        abi: contractData.abi,
+        functionName: 'getProperty',
+        args: [propertyID],
+        onError(error) {
+            console.log(error);
+            // TODO Render failure message on screen
+            if (!property) throw new Error(`Property ${propertyID} not found!`);
+        },
+        onSuccess(data) {
+            console.log(data);
+            setProperty(data as Property);
+        },
+    });
+
+    useContractRead({
         address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
         abi: contractData.abi,
         functionName: 'getBookings',
@@ -33,10 +46,11 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
             console.log(error);
         },
         onSuccess(data) {
-            console.log(data);
             setBookings(data as Booking[]);
         },
     });
+
+    if (property === null) return <div>Loading</div>
 
     const {
         name,

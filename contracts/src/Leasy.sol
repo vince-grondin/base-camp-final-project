@@ -100,6 +100,14 @@ interface ILeasy is IERC721 {
     ) external returns (Booking[] memory propertyBookings);
 
     /**
+     * @notice Gets the property identified by the supplied `_propertyID`.
+     * @param _propertyID The ID of the property.
+     */
+    function getProperty(
+        uint _propertyID
+    ) external view returns (Property memory);
+
+    /**
      * @notice Gets all properties.
      * @return All properties.
      */
@@ -135,6 +143,8 @@ contract Leasy is ILeasy, ERC721 {
     ) external override returns (uint propertyID) {
         // TODO Support status param to activate when adding, support deposit amount to set deposit when adding
         propertyID = properties.length;
+        uint propertyIndex = properties.length;
+        
         _mint(_msgSender(), propertyID);
 
         Property storage property = properties.push();
@@ -143,6 +153,8 @@ contract Leasy is ILeasy, ERC721 {
         property.fullAddress = _fullAddress;
         property.picturesUrls = _picturesUrls;
         property.owner = _msgSender();
+
+        propertyIndexes[propertyID] = propertyIndex;
 
         emit PropertyAdded(propertyID);
     }
@@ -244,6 +256,19 @@ contract Leasy is ILeasy, ERC721 {
         for (uint i = 0; i < bookingIDs.length; i++) {
             propertyBookings[i] = bookings[bookingsIndexes[bookingIDs[i]]];
         }
+    }
+
+    /// @inheritdoc ILeasy
+    function getProperty(
+        uint _propertyID
+    )
+        external
+        view
+        override
+        propertyExists(_propertyID)
+        returns (Property memory)
+    {
+        return properties[propertyIndexes[_propertyID]];
     }
 
     /// @inheritdoc ILeasy
