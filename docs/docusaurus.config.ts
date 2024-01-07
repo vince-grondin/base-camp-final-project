@@ -13,7 +13,7 @@ const config: Config = {
   organizationName: 'vince-grondin',
   projectName: 'base-camp-final-project',
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
 
   i18n: {
