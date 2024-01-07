@@ -12,6 +12,7 @@ const config: Config = {
 
   organizationName: 'vince-grondin',
   projectName: 'base-camp-final-project',
+  trailingSlash: false,
 
   onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
