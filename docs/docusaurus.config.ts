@@ -7,12 +7,12 @@ const config: Config = {
   tagline: 'Leasy Documentation',
   favicon: 'img/favicon.ico',
 
-  url: 'https://vince-grondin.github.io',
-  baseUrl: '/',
-
+  url: 'https://github.com',
+  baseUrl: '/base-camp-final-project/',
   organizationName: 'vince-grondin',
   projectName: 'base-camp-final-project',
   trailingSlash: false,
+  deploymentBranch: 'gh-pages',
 
   onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
