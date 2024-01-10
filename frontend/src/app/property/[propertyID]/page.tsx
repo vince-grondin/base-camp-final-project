@@ -32,7 +32,6 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
             if (!property) throw new Error(`Property ${propertyID} not found!`);
         },
         onSuccess(data) {
-            console.log(data);
             setProperty(data as Property);
         },
     });
@@ -85,8 +84,8 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
         }
         {pendingBookings.length > 0 &&
             <ul>
-                {pendingBookings.map(({ booker, dates }, index) =>
-                    <li>{booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
+                {pendingBookings.map(({ id, booker, dates }, index) =>
+                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
                 )}
             </ul>
         }
@@ -95,8 +94,8 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
         {acceptedBookings.length == 0 && <div><span className="italic">No accepted bookings.</span></div>}
         {acceptedBookings.length > 0 &&
             <ul>
-                {acceptedBookings.map(({ booker, dates }, index) =>
-                    <li>{booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
+                {acceptedBookings.map(({ id, booker, dates }, index) =>
+                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
                 )}
             </ul>
         }
