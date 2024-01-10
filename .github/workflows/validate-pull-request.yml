@@ -1,0 +1,36 @@
+on:
+  pull_request:
+  workflow_dispatch:
+
+name: Validate Pull Request
+
+jobs:
+  validate_smart_contracts:
+    name: Validate Smart Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        # https://github.com/marketplace/actions/foundry-toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Set GitHub author identity
+        env:
+          GITHUB_USER_EMAIL: ${{ secrets.GH_USER_EMAIL }}
+          GITHUB_USER_NAME: ${{ secrets.GH_USER_NAME }}
+        run: git config --global user.email "$GITHUB_USER_EMAIL"; git config --global user.name "$GITHUB_USER_NAME"
+
+      - name: Install libraries
+        working-directory: ./contracts
+        run: forge install OpenZeppelin/openzeppelin-contracts
+
+      - name: Run tests
+        working-directory: ./contracts
+        run: forge test -vvv
+
+      - name: Run snapshot
+        working-directory: ./contracts
+        run: forge snapshot
