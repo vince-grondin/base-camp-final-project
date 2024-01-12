@@ -138,7 +138,7 @@ contract Leasy is ILeasy, ERC721 {
     mapping(uint bookingID => uint bookingIndex) internal bookingsIndexes;
     mapping(uint propertyID => uint[] bookingIDs) propertyBookingIDs;
 
-    LeasyStay leasyStay;
+    ILeasyStay leasyStay;
 
     constructor(
         string memory _name,
@@ -148,7 +148,7 @@ contract Leasy is ILeasy, ERC721 {
         // Avoid 0 index
         properties.push();
         bookings.push();
-        leasyStay = LeasyStay(_leasyStay);
+        leasyStay = ILeasyStay(_leasyStay);
     }
 
     /// @inheritdoc ILeasy

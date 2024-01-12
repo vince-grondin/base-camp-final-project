@@ -3,6 +3,7 @@ import { Booking, BookingStatus, Property } from "@/app/Models";
 import { useState } from "react";
 import { useContractRead } from "wagmi";
 import contractData from '../../../../contracts/out/Leasy.sol/Leasy.json';
+import Link from "next/link";
 
 export type BookingsSectionProps = {
     propertyID: number
@@ -10,8 +11,9 @@ export type BookingsSectionProps = {
 
 export default function BookingsSection({ propertyID }: BookingsSectionProps) {
     const [bookings, setBookings] = useState<Booking[]>([]);
-    const pendingBookings = bookings.filter(({ status }) => status === BookingStatus.REQUESTED);
     const acceptedBookings = bookings.filter(({ status }) => status === BookingStatus.ACCEPTED);
+    const endedBookings = bookings.filter(({ status }) => status === BookingStatus.ENDED);
+    const pendingBookings = bookings.filter(({ status }) => status === BookingStatus.REQUESTED);
 
     useContractRead({
         address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
@@ -22,6 +24,7 @@ export default function BookingsSection({ propertyID }: BookingsSectionProps) {
             console.log(error);
         },
         onSuccess(data) {
+            console.log(data);
             setBookings(data as Booking[]);
         },
         watch: true
@@ -34,9 +37,7 @@ export default function BookingsSection({ propertyID }: BookingsSectionProps) {
         }
         {pendingBookings.length > 0 &&
             <ul>
-                {pendingBookings.map(({ id, booker, dates }, index) =>
-                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
-                )}
+                {pendingBookings.map((booking, index) => <BookingRow key={index} {...booking} />)}
             </ul>
         }
 
@@ -44,10 +45,25 @@ export default function BookingsSection({ propertyID }: BookingsSectionProps) {
         {acceptedBookings.length == 0 && <div><span className="italic">No accepted bookings.</span></div>}
         {acceptedBookings.length > 0 &&
             <ul>
-                {acceptedBookings.map(({ id, booker, dates }, index) =>
-                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
-                )}
+                {acceptedBookings.map((booking, index) => <BookingRow key={index} {...booking} />)}
+            </ul>
+        }
+
+        <h3 className="text-lg mt-2">✅✅ Ended Bookings</h3>
+        {endedBookings.length == 0 && <div><span className="italic">No completed bookings.</span></div>}
+        {endedBookings.length > 0 &&
+            <ul>
+                {endedBookings.map((booking, index) => <BookingRow key={index} {...booking} />)}
             </ul>
         }
     </div>
+}
+
+function BookingRow({ id, booker, dates }: Booking) {
+    return <li>
+        Booking #{id.toString()}:&nbsp;
+        <Link className="underline" href={`/stays/${booker}`}>{booker}</Link>&nbsp;
+        -&nbsp;
+        {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}
+    </li>
 }

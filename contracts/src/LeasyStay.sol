@@ -20,6 +20,12 @@ interface ILeasyStay is IERC721 {
     }
 
     /**
+     * @notice Returns the array of stays for the user.
+     * @return _myStays The array of stays for the user.
+     */
+    function getMyStays() external returns (Stay[] memory _myStays);
+
+    /**
      * @notice Mints a record as a proof a user completed their stay at the property identified by the supplied
      *         `_propertyID`.
      * @param _bookingID The identifier of the booking completed in the `Leasy` contract.
@@ -37,8 +43,7 @@ interface ILeasyStay is IERC721 {
 
 contract LeasyStay is ILeasyStay, ERC721 {
     Stay[] internal stays;
-    mapping (uint stayID => uint stayIndex) internal stayIndexes;
-    mapping (address owner => Stay[] userStays) internal userStays;
+    mapping(address owner => uint[] userStayIndexes) internal userStays;
 
     constructor(
         string memory _name,
@@ -58,19 +63,33 @@ contract LeasyStay is ILeasyStay, ERC721 {
         // TODO Revert if any of the dates are in the future?
 
         uint stayID = stays.length;
+        uint stayIndex = stays.length;
 
         _mint(_booker, stayID);
 
-        stays.push(Stay({
-            id: stayID,
-            bookingID: _bookingID,
-            booker: _booker,
-            propertyID: _propertyID,
-            dates: _dates
-        }));
+        stays.push(
+            Stay({
+                id: stayID,
+                bookingID: _bookingID,
+                booker: _booker,
+                propertyID: _propertyID,
+                dates: _dates
+            })
+        );
+
+        userStays[_booker].push(stayIndex);
 
         emit StaySaved(stayID, _booker, _propertyID);
 
         return true;
+    }
+
+    /// @inheritdoc ILeasyStay
+    function getMyStays() external view override returns (Stay[] memory _myStays) {
+        _myStays = new Stay[](userStays[_msgSender()].length);
+
+        for (uint i = 0; i < userStays[_msgSender()].length; i++) {
+            _myStays[i] = stays[userStays[_msgSender()][i]];
+        }
     }
 }

@@ -17,6 +17,7 @@ export function PropertiesContextProvider({ children }: PropertiesContextProvide
         onSuccess(data) {
             setProperties(data as Property[]);
         },
+        watch: true
     });
 
     return <PropertiesContext.Provider value={properties}>{children}</PropertiesContext.Provider>;

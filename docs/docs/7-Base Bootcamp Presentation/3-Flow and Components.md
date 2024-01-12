@@ -1,6 +1,7 @@
 # Components and Flow
 
 ## Flow
+
 <details>
 ```mermaid
 ---
@@ -27,6 +28,7 @@ classDiagram
         +activateProperty(uint _propertyID, uint _depositAmount) external returns (bool)
         +requestBooking(uint _propertyID, string[] memory _dates) external payable returns (bool)
         +acceptBooking(uint _bookingID) external returns (bool)
+        +endBooking(uint _bookingID) external returns (bool)
         +getBookings(uint _propertyID) external returns (Booking[] memory propertyBookings)
         +getProperty(uint _propertyID) external view returns (Property memory)
         +getProperties() external returns (Property[] memory)
@@ -62,11 +64,34 @@ classDiagram
         +uint depositAmount
     }
 
+    class ILeasyStay {
+        +getMyStays() external returns (Stay[] memory _myStays)
+        +saveStay(uint _bookingID, address _booker, uint _propertyID, string[] memory _dates) external returns (bool)
+    }
+    <<interface>> ILeasy
+
+    class LeasyStay {
+        -Stay[] stays
+    }
+
+    class Stay {
+        +uint id
+        +uint bookingID
+        +address booker
+        +uint propertyID
+        +string[] dates
+    }
+
     IERC721 <|-- ILeasy : inherits
     ILeasy <|-- Leasy : implements
     ERC721 <|-- Leasy : inherits
     Leasy --o Booking : uses (one-to-many)
     Leasy --o Property : uses (one-to-many)
+    Leasy --* ILeasyStay : uses (one-to-one)
 
+    IERC721 <|-- ILeasyStay : inherits
+    ILeasyStay <|-- LeasyStay : implements
+    ERC721 <|-- LeasyStay : inherits
+    LeasyStay --o Stay : uses (one-to-many)
 ```
 </details>
