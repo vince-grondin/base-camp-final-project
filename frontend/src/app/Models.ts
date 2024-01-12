@@ -7,7 +7,7 @@ export type Booking = {
     status: BookingStatus;
 }
 
-export enum BookingStatus { REQUESTED, ACCEPTED }
+export enum BookingStatus { REQUESTED, ACCEPTED, ENDED }
 
 export type Property = {
     id: number,
