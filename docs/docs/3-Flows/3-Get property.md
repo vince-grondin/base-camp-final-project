@@ -1,29 +1,5 @@
-# Flows
-
-## List all properties
-
-```mermaid
-sequenceDiagram
-    actor U as User
-    participant F as Frontend
-    participant L as Leasy Smart Contract
-
-    U ->> F: Navigates to /
-    activate U
-    activate F
-
-    F ->> L: Calls getProperties
-        activate L
-        L -->> F: Returns properties
-        deactivate L
-    F -->> F: Renders grid of property cards
-
-    deactivate F
-    deactivate U
-```
-
-## Get property details
-
+## Get property details end-to-end flow
+<details>
 ```mermaid
 sequenceDiagram
     actor U as User
@@ -53,7 +29,7 @@ sequenceDiagram
                 F -->> F: No-op
             end
 
-        else Property does not exist ❌
+        else Property does not exist or fails to be fetched ❌
             activate L
             L -->> F: Returns error
             deactivate L
@@ -64,3 +40,4 @@ sequenceDiagram
     deactivate F
     deactivate U
 ```
+</details>
