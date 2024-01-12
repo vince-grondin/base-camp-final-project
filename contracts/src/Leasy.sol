@@ -3,7 +3,7 @@ pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/interfaces/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "./LeasyStay.sol";
+import "@src/LeasyStay.sol";
 
 /**
  * @title Main contract hosting logic for Leasy, a system allowing to mint properties and lease them.
@@ -263,8 +263,8 @@ contract Leasy is ILeasy, ERC721 {
         isOwnerByBookingID(_bookingID)
         returns (bool)
     {
-        Booking memory booking = bookings[bookingsIndexes[_bookingID]];
-        booking.status = BookingStatus.COMPLETED;
+        Booking storage booking = bookings[bookingsIndexes[_bookingID]];
+        booking.status = BookingStatus.ENDED;
 
         leasyStay.saveStay(_bookingID, booking.booker, booking.propertyID, booking.dates);
 
