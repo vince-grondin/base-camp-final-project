@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 
+import "@openzeppelin/contracts/interfaces/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "./LeasyStay.sol";
 
 /**
  * @title Main contract hosting logic for Leasy, a system allowing to mint properties and lease them.
@@ -10,7 +12,8 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 interface ILeasy is IERC721 {
     enum BookingStatus {
         REQUESTED, // Default, keep first
-        ACCEPTED
+        ACCEPTED,
+        ENDED
     }
 
     enum PropertyStatus {
@@ -29,6 +32,7 @@ interface ILeasy is IERC721 {
     error SenderNotRenter(uint propertyID);
 
     event BookingRequested(uint propertyID, uint bookingID);
+    event BookingEnded(uint propertyID, uint bookingID);
     event PropertyAdded(uint propertyID);
     event PropertyActivated(uint propertyID);
 
@@ -91,6 +95,14 @@ interface ILeasy is IERC721 {
     function acceptBooking(uint _bookingID) external returns (bool);
 
     /**
+     * @notice Ends a booking and rewards the booking with a `LeasyStay` NFT.
+     * @dev Updates the booking status to COMPLETED and invokes the `LeasyStay` contract to mint a LeasyStay for the
+     *      booker.
+     * @param _bookingID The ID of the booking.
+     */
+    function endBooking(uint _bookingID) external returns (bool);
+
+    /**
      * @notice Gets the bookings submitted for the property identified by the supplied `_propertyID`.
      * @param _propertyID The ID of the property.
      * @return propertyBookings The bookings submitted for the property identified by the supplied `_propertyID`.
@@ -126,13 +138,17 @@ contract Leasy is ILeasy, ERC721 {
     mapping(uint bookingID => uint bookingIndex) internal bookingsIndexes;
     mapping(uint propertyID => uint[] bookingIDs) propertyBookingIDs;
 
+    LeasyStay leasyStay;
+
     constructor(
         string memory _name,
-        string memory _symbol
+        string memory _symbol,
+        address _leasyStay
     ) ERC721(_name, _symbol) {
         // Avoid 0 index
         properties.push();
         bookings.push();
+        leasyStay = LeasyStay(_leasyStay);
     }
 
     /// @inheritdoc ILeasy
@@ -144,7 +160,7 @@ contract Leasy is ILeasy, ERC721 {
         // TODO Support status param to activate when adding, support deposit amount to set deposit when adding
         propertyID = properties.length;
         uint propertyIndex = properties.length;
-        
+
         _mint(_msgSender(), propertyID);
 
         Property storage property = properties.push();
@@ -219,10 +235,7 @@ contract Leasy is ILeasy, ERC721 {
         return true;
     }
 
-    /**
-     * @inheritdoc ILeasy
-     * @dev Transfers the `_applicant` address from `applicants` to `renters`.
-     */
+    /// @inheritdoc ILeasy
     function acceptBooking(
         uint _bookingID
     )
@@ -236,6 +249,26 @@ contract Leasy is ILeasy, ERC721 {
         bookings[bookingsIndexes[_bookingID]].status = BookingStatus.ACCEPTED;
 
         // TODO Return deposit of applicants that selected any dates the same as any of this selected applicant's dates
+
+        return true;
+    }
+
+    /// @inheritdoc ILeasy
+    function endBooking(
+        uint _bookingID
+    )
+        external
+        override
+        bookingExists(_bookingID)
+        isOwnerByBookingID(_bookingID)
+        returns (bool)
+    {
+        Booking memory booking = bookings[bookingsIndexes[_bookingID]];
+        booking.status = BookingStatus.COMPLETED;
+
+        leasyStay.saveStay(_bookingID, booking.booker, booking.propertyID, booking.dates);
+
+        emit BookingEnded(booking.propertyID, _bookingID);
 
         return true;
     }

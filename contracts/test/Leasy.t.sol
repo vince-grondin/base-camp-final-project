@@ -3,6 +3,7 @@ pragma solidity 0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/Leasy.sol";
+import "../src/LeasyStay.sol";
 
 /**
  * @title Verifies the behavior of the Leasy contract.
@@ -10,6 +11,7 @@ import "../src/Leasy.sol";
  */
 contract LeasyTest is Test {
     Leasy private leasy;
+    LeasyStay private leasyStay;
 
     Leasy.Property private defaultProperty;
 
@@ -23,7 +25,15 @@ contract LeasyTest is Test {
     event PropertyActivated(uint propertyID);
 
     function setUp() public {
-        leasy = new Leasy("TEST_NAME", "TEST_SYMBOL");
+        leasyStay = new LeasyStay(
+            "LEASY_STAY_TEST_NAME",
+            "LEASY_STAY_TEST_SYMBOL"
+        );
+        leasy = new Leasy(
+            "LEASY_TEST_NAME",
+            "LEASY_TEST_SYMBOL",
+            address(leasyStay)
+        );
         _initializeTestFixtures();
     }
 
