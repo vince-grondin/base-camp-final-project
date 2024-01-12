@@ -1,9 +1,10 @@
 "use client";
-import { Booking, BookingStatus, Property } from "@/app/Models";
+import { Property } from "@/app/Models";
 import { PropertyStatusBadge } from "@/app/_components/PropertyStatusBadge";
 import { useState } from "react";
 import { useAccount, useContractRead } from "wagmi";
 import contractData from '../../../../../contracts/out/Leasy.sol/Leasy.json';
+import BookingsSection from "@/app/_components/Bookings";
 
 export type PropertyDetailsParams = {
     propertyID: number
@@ -15,11 +16,9 @@ export type PropertyDetailsProps = {
 
 export default function PropertyDetails({ params: { propertyID } }: PropertyDetailsProps) {
     const [property, setProperty] = useState<Property | null>(null);
-
-    const [bookings, setBookings] = useState<Booking[]>([]);
-    const pendingBookings = bookings.filter(({ status }) => status === BookingStatus.REQUESTED);
-    const acceptedBookings = bookings.filter(({ status }) => status === BookingStatus.ACCEPTED);
-    const { address: connectedAddress, isConnecting, isDisconnected } = useAccount();
+    const { address: connectedAddress } = useAccount();
+    const [isFetching, setIsFetching] = useState(true);
+    const [errorMessage, setErrorMessage] = useState("");
 
     useContractRead({
         address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
@@ -28,28 +27,18 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
         args: [propertyID],
         onError(error) {
             console.log(error);
-            // TODO Render failure message on screen
-            if (!property) throw new Error(`Property ${propertyID} not found!`);
+            setErrorMessage(`Unable to retrieve details for property ${propertyID}!`);
+            setIsFetching(false);
         },
         onSuccess(data) {
             setProperty(data as Property);
+            setIsFetching(false);
         },
     });
 
-    useContractRead({
-        address: process.env.NEXT_PUBLIC_LEASY_CONTRACT_ADDRESS as `0x${string}`,
-        abi: contractData.abi,
-        functionName: 'getBookings',
-        args: [propertyID],
-        onError(error) {
-            console.log(error);
-        },
-        onSuccess(data) {
-            setBookings(data as Booking[]);
-        },
-    });
-
-    if (property === null) return <div>Loading...</div>
+    if (isFetching === null) return <div>Retrieving property details...</div>
+    if (errorMessage) return <div className="text-red-600">{errorMessage}</div>
+    if (property === null) return
 
     const {
         name,
@@ -76,28 +65,11 @@ export default function PropertyDetails({ params: { propertyID } }: PropertyDeta
 
         <div>💰 Deposit: {depositAmount.toString()} wei</div>
 
-        <hr className="mt-5 mb-5" />
-
-        <h3 className="text-xl">Bookings</h3>
-        <h3 className="text-lg">👀 Pending Bookings</h3>
-        {pendingBookings.length == 0 && <div><span className="italic">No pending bookings.</span></div>
-        }
-        {pendingBookings.length > 0 &&
-            <ul>
-                {pendingBookings.map(({ id, booker, dates }, index) =>
-                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
-                )}
-            </ul>
-        }
-
-        <h3 className="text-lg mt-2">✅ Accepted Bookings</h3>
-        {acceptedBookings.length == 0 && <div><span className="italic">No accepted bookings.</span></div>}
-        {acceptedBookings.length > 0 &&
-            <ul>
-                {acceptedBookings.map(({ id, booker, dates }, index) =>
-                    <li key={index}>Booking #{id.toString()}: {booker} - {dates.reduce((acc: string, curr: string) => `${acc}, ${curr}`)}</li>
-                )}
-            </ul>
+        {property.owner === connectedAddress &&
+            <>
+                <hr className="mt-5 mb-5" />
+                <BookingsSection {...{ propertyID }} />
+            </>
         }
     </div>
 }
