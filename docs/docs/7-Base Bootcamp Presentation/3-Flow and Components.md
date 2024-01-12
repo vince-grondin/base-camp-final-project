@@ -87,7 +87,7 @@ classDiagram
     ERC721 <|-- Leasy : inherits
     Leasy --o Booking : uses (one-to-many)
     Leasy --o Property : uses (one-to-many)
-    Leasy --* LeasyStay : uses (one-to-one)
+    Leasy --* ILeasyStay : uses (one-to-one)
 
     IERC721 <|-- ILeasyStay : inherits
     ILeasyStay <|-- LeasyStay : implements
