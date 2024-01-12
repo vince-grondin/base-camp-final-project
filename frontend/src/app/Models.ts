@@ -20,3 +20,11 @@ export type Property = {
 }
 
 export enum PropertyStatus { INACTIVE, AVAILABLE }
+
+export type Stay = {
+    id: number,
+    bookingID: number,
+    booker: `0x${string}`,
+    propertyID: number,
+    dates: string[];
+}
